@@ -31,7 +31,16 @@ function record(name, ok, detail = "") {
   console.log(`  ${ok ? "PASS" : "FAIL"}  ${name}${detail ? ` — ${detail}` : ""}`);
 }
 
-const IGNORABLE_CONSOLE = /DevTools|favicon|Download the React|Lit is in dev mode/i;
+/**
+ * Noise that arrives on the console error channel without being an error.
+ *
+ * The XNNPACK line is the TensorFlow Lite runtime inside MediaPipe announcing
+ * which delegate it picked. It is prefixed "INFO:" and is emitted on stderr,
+ * which the browser surfaces as console.error — so it has to be matched here
+ * or every page that loads a landmarker fails this check.
+ */
+const IGNORABLE_CONSOLE =
+  /DevTools|favicon|Download the React|Lit is in dev mode|XNNPACK delegate|^INFO:/i;
 
 async function main() {
   if (!CHROME) throw new Error("No Chrome binary found. Set CHROME_PATH.");
@@ -73,13 +82,54 @@ async function main() {
       };
       draw();
 
-      const stream = canvas.captureStream(30);
+      const videoStream = canvas.captureStream(30);
+
+      /**
+       * A synthetic voice for the microphone, at a pitch we can check for.
+       *
+       * A sawtooth at 130 Hz has the same harmonic structure as voiced speech,
+       * so the acoustic analyser should lock onto it and report roughly 130 Hz.
+       * That turns "the microphone path runs" into a real assertion about the
+       * number that comes out the far end of it.
+       */
+      window.__TEST_VOICE_HZ__ = 130;
+      let audioStream = null;
+      const makeAudioStream = () => {
+        if (audioStream) return audioStream;
+        const ctx = new AudioContext();
+        const osc = ctx.createOscillator();
+        osc.type = "sawtooth";
+        osc.frequency.value = window.__TEST_VOICE_HZ__;
+        const gain = ctx.createGain();
+        gain.gain.value = 0.25;
+        const destination = ctx.createMediaStreamDestination();
+        osc.connect(gain);
+        gain.connect(destination);
+        osc.start();
+        audioStream = destination.stream;
+        return audioStream;
+      };
+
       Object.defineProperty(navigator, "mediaDevices", {
         configurable: true,
         value: {
-          getUserMedia: async () => stream,
+          getUserMedia: async (constraints = {}) => {
+            // Honour the constraints: the vitals agent asks for video only and
+            // the companion asks for audio only, and handing back the wrong
+            // kind of track would make both look broken for the wrong reason.
+            if (constraints.audio && !constraints.video) return makeAudioStream();
+            if (constraints.audio && constraints.video) {
+              const combined = new MediaStream([
+                ...videoStream.getVideoTracks(),
+                ...makeAudioStream().getAudioTracks(),
+              ]);
+              return combined;
+            }
+            return videoStream;
+          },
           enumerateDevices: async () => [
             { kind: "videoinput", deviceId: "canvas", label: "Canvas test camera" },
+            { kind: "audioinput", deviceId: "osc", label: "Oscillator test microphone" },
           ],
         },
       });
@@ -173,6 +223,53 @@ async function main() {
     const bpWithheld = /one-time calibration|Not calibrated/i.test(stage);
     record("blood pressure withheld pending calibration", bpWithheld);
 
+    console.log("\nMicrophone path, through the companion agent");
+    const audioAsset = await page.evaluate(
+      async (url) => (await fetch(url, { method: "HEAD" })).status,
+      "/audio/voice-capture.js",
+    );
+    record("/audio/voice-capture.js served", audioAsset === 200, `HTTP ${audioAsset}`);
+
+    consoleErrors.length = 0;
+    await page.goto(`${BASE}/agents/companion`, { waitUntil: "networkidle0" });
+    const startedConversation = await page.evaluate(() => {
+      const button = [...document.querySelectorAll("button")].find((b) =>
+        b.textContent?.includes("Start conversation"),
+      );
+      if (!button) return false;
+      button.click();
+      return true;
+    });
+    record("companion exposes a Start control", startedConversation);
+
+    // The analyser needs a few seconds of audio in its rolling window before
+    // it will commit to a number, which is the behaviour we want.
+    let voiceText = "";
+    const voiceDeadline = Date.now() + 25_000;
+    while (Date.now() < voiceDeadline) {
+      voiceText = await page.evaluate(() => document.body.innerText);
+      if (/\b\d{2,3}\s*Hz\b/.test(voiceText)) break;
+      await new Promise((r) => setTimeout(r, 500));
+    }
+
+    const pitchMatch = voiceText.match(/(\d{2,3})\s*Hz/);
+    const pitch = pitchMatch ? Number(pitchMatch[1]) : null;
+    record(
+      "audio worklet captured and the analyser produced a pitch",
+      pitch !== null,
+      pitch === null ? "no pitch reported within 25s" : `${pitch} Hz`,
+    );
+    record(
+      "measured pitch matches the 130 Hz test tone",
+      pitch !== null && Math.abs(pitch - 130) <= 8,
+      pitch === null ? "not measured" : `${pitch} Hz vs 130 Hz`,
+    );
+    record(
+      "companion ran without console errors",
+      consoleErrors.length === 0,
+      consoleErrors.slice(0, 2).join(" | "),
+    );
+
     console.log("\nPage mounting");
     for (const path of [
       "/",
@@ -180,6 +277,7 @@ async function main() {
       "/agents/alertness",
       "/agents/motor",
       "/agents/fast",
+      "/agents/companion",
     ]) {
       consoleErrors.length = 0;
       const res = await page.goto(`${BASE}${path}`, { waitUntil: "networkidle0" });

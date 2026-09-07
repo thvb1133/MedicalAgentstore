@@ -23,6 +23,15 @@ const SHOTS = [
   { path: "/agents/vitals", name: "vitals_agent", wait: 1500, start: "Start measuring" },
   { path: "/agents/motor", name: "motor_agent", wait: 1200 },
   { path: "/agents/fast", name: "fast_agent", wait: 1200 },
+  {
+    path: "/agents/companion",
+    name: "companion_agent",
+    wait: 1500,
+    start: "Start conversation",
+    // Long enough for the acoustic analyser to fill its rolling window, so the
+    // shot shows populated measurements rather than an empty panel.
+    startWait: 14000,
+  },
 ];
 
 async function main() {
@@ -52,10 +61,34 @@ async function main() {
         requestAnimationFrame(draw);
       };
       draw();
-      const stream = canvas.captureStream(30);
+      const videoStream = canvas.captureStream(30);
+
+      // A 130 Hz sawtooth stands in for a voice, so the companion's acoustic
+      // panel shows real measured values in the screenshot.
+      let audioStream = null;
+      const makeAudioStream = () => {
+        if (audioStream) return audioStream;
+        const audioCtx = new AudioContext();
+        const osc = audioCtx.createOscillator();
+        osc.type = "sawtooth";
+        osc.frequency.value = 130;
+        const gain = audioCtx.createGain();
+        gain.gain.value = 0.25;
+        const destination = audioCtx.createMediaStreamDestination();
+        osc.connect(gain);
+        gain.connect(destination);
+        osc.start();
+        audioStream = destination.stream;
+        return audioStream;
+      };
+
       Object.defineProperty(navigator, "mediaDevices", {
         configurable: true,
-        value: { getUserMedia: async () => stream, enumerateDevices: async () => [] },
+        value: {
+          getUserMedia: async (constraints = {}) =>
+            constraints.audio && !constraints.video ? makeAudioStream() : videoStream,
+          enumerateDevices: async () => [],
+        },
       });
     });
 
@@ -67,7 +100,7 @@ async function main() {
             .find((b) => b.textContent?.includes(label))
             ?.click();
         }, shot.start);
-        await new Promise((r) => setTimeout(r, 8000));
+        await new Promise((r) => setTimeout(r, shot.startWait ?? 8000));
       }
       await new Promise((r) => setTimeout(r, shot.wait));
       const file = `${OUT}/${shot.name}.png`;

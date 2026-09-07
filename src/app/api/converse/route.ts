@@ -2,7 +2,12 @@ import Anthropic from "@anthropic-ai/sdk";
 import { NextRequest } from "next/server";
 
 import { config } from "@/lib/server/config";
-import type { ConversationTurn, ConverseRequest, LiveContext } from "@/lib/conversation";
+import {
+  describeContext,
+  type ConversationTurn,
+  type ConverseRequest,
+  type LiveContext,
+} from "@/lib/conversation";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -78,83 +83,6 @@ function isTurn(value: unknown): value is ConversationTurn {
   if (typeof value !== "object" || value === null) return false;
   const t = value as Partial<ConversationTurn>;
   return (t.role === "user" || t.role === "assistant") && typeof t.text === "string";
-}
-
-/**
- * Render the sensor block as prose rather than JSON.
- *
- * Handing the model raw JSON makes it likelier to read values back verbatim,
- * decimals and all, which sounds absurd spoken aloud. Describing the same
- * numbers in sentences — and saying outright when something is unmeasured —
- * produces turns that sound like a person noticed something.
- */
-function describeContext(context: LiveContext): string {
-  const lines: string[] = [];
-
-  lines.push(`Session length so far: ${Math.round(context.sessionSeconds)} seconds.`);
-
-  const v = context.vitals;
-  if (!v || v.quality < 0.15) {
-    lines.push(
-      "Camera vitals: nothing measurable yet. Do not refer to any vital signs as if you had them.",
-    );
-  } else {
-    const parts: string[] = [];
-    parts.push(
-      v.heartRateBpm === null
-        ? "heart rate could not be measured"
-        : `heart rate ${Math.round(v.heartRateBpm)} beats per minute`,
-    );
-    parts.push(
-      v.breathingRateBpm === null
-        ? "breathing rate could not be measured"
-        : `breathing ${Math.round(v.breathingRateBpm)} breaths per minute`,
-    );
-    if (v.hrvSdnnMs !== null) parts.push(`heart rate variability ${Math.round(v.hrvSdnnMs)} ms`);
-    if (v.stressIndex !== null) {
-      parts.push(`a derived stress index of ${v.stressIndex.toFixed(2)} out of 1`);
-    }
-    if (v.bloodPressure) {
-      parts.push(
-        `blood pressure about ${v.bloodPressure.systolic} over ${v.bloodPressure.diastolic}, give or take ${v.bloodPressure.uncertainty}`,
-      );
-    } else {
-      parts.push(`blood pressure unavailable (${v.bloodPressureStatus})`);
-    }
-    lines.push(`Camera vitals: ${parts.join(", ")}.`);
-    lines.push(
-      `Camera signal quality ${v.quality.toFixed(2)} out of 1${v.limiting ? ` — ${v.limiting}` : ""}.`,
-    );
-  }
-
-  const a = context.voice;
-  if (!a || a.quality < 0.15) {
-    lines.push("Voice acoustics: not enough clean speech to measure yet.");
-  } else {
-    const parts: string[] = [];
-    if (a.medianF0Hz !== null) parts.push(`pitch around ${Math.round(a.medianF0Hz)} Hz`);
-    if (a.pitchRangeSemitones !== null) {
-      parts.push(`pitch variation ${a.pitchRangeSemitones.toFixed(1)} semitones`);
-    }
-    if (a.jitterPercent !== null) parts.push(`jitter ${a.jitterPercent.toFixed(2)}%`);
-    if (a.shimmerPercent !== null) parts.push(`shimmer ${a.shimmerPercent.toFixed(2)}%`);
-    if (a.harmonicsToNoiseDb !== null) {
-      parts.push(`harmonics-to-noise ${a.harmonicsToNoiseDb.toFixed(1)} dB`);
-    }
-    if (a.speechRateHz !== null) {
-      parts.push(`speaking about ${a.speechRateHz.toFixed(1)} syllables per second`);
-    }
-    if (a.pauseRatio !== null) parts.push(`pausing ${Math.round(a.pauseRatio * 100)}% of the time`);
-    lines.push(`Voice acoustics: ${parts.join(", ")}.`);
-    lines.push(
-      `Voice signal quality ${a.quality.toFixed(2)} out of 1${a.limiting ? ` — ${a.limiting}` : ""}.`,
-    );
-    lines.push(
-      "Reminder: these are descriptions of sound only. Do not infer mood, mental health or neurological state from them.",
-    );
-  }
-
-  return lines.join("\n");
 }
 
 export async function POST(req: NextRequest) {

@@ -137,13 +137,14 @@ export function CompanionAgent({ agent }: { agent: AgentDefinition }) {
           className="panel p-4 text-[12.5px] leading-relaxed"
           style={{ borderColor: "var(--fair)" }}
         >
-          <span className="font-medium text-[var(--foreground)]">
-            The conversation needs Claude.{" "}
+            <span className="font-medium text-[var(--foreground)]">
+            Talking back needs Claude.{" "}
           </span>
           <span className="text-[var(--muted)]">
-            Set <span className="tabular">ANTHROPIC_API_KEY</span> and restart. The
-            camera and voice measurements below work without it — they all run in
-            your browser.
+            Set <span className="tabular">ANTHROPIC_API_KEY</span> and restart to
+            enable the conversation. You can still start a session now — the camera
+            vitals and voice acoustics run entirely in your browser and need no
+            keys at all.
           </span>
         </div>
       )}
@@ -159,8 +160,7 @@ export function CompanionAgent({ agent }: { agent: AgentDefinition }) {
           <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={() => (running ? stop() : void start())}
-              disabled={claudeMissing}
-              className="rounded-lg px-4 py-2 text-[13px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+              className="rounded-lg px-4 py-2 text-[13px] font-semibold transition-colors"
               style={{
                 background: running ? "var(--surface-raised)" : agent.accent,
                 color: running ? "var(--foreground)" : "#141414",
@@ -222,9 +222,11 @@ export function CompanionAgent({ agent }: { agent: AgentDefinition }) {
             {visibleTurns.length === 0 && !conversation.partial && (
               <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
                 <p className="max-w-sm text-[13px] leading-relaxed text-[var(--muted)]">
-                  {running
-                    ? "Say hello whenever you are ready. Pause when you finish speaking and the reply will come."
-                    : "Start the conversation and the assistant will listen while the camera measures your pulse and breathing."}
+                  {claudeMissing
+                    ? "Running in measurement-only mode. The panels around this one are live; add a Claude key to have a conversation as well."
+                    : running
+                      ? "Say hello whenever you are ready. Pause when you finish speaking and the reply will come."
+                      : "Start the conversation and the assistant will listen while the camera measures your pulse and breathing."}
                 </p>
               </div>
             )}
@@ -273,6 +275,15 @@ export function CompanionAgent({ agent }: { agent: AgentDefinition }) {
             </p>
           )}
 
+          {conversation.recognitionBlocked && (
+            <p className="mt-2 text-[12px] leading-relaxed" style={{ color: "var(--fair)" }}>
+              Speech recognition is unavailable, so the assistant cannot hear
+              you — type below instead. Everything else is unaffected: the
+              camera vitals and the voice measurements on the right are still
+              live.
+            </p>
+          )}
+
           {/*
             Typing is not a fallback bolted on for completeness. Web Speech is
             missing in Firefox entirely, and speech recognition in general is
@@ -293,9 +304,9 @@ export function CompanionAgent({ agent }: { agent: AgentDefinition }) {
               value={typed}
               onChange={(e) => setTyped(e.target.value)}
               placeholder={
-                conversation.recognitionAvailable
-                  ? "Or type instead of speaking"
-                  : "This browser cannot listen — type here"
+                !conversation.recognitionAvailable || conversation.recognitionBlocked
+                  ? "This browser cannot listen — type here"
+                  : "Or type instead of speaking"
               }
               disabled={claudeMissing}
               className="flex-1 rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] px-3 py-2 text-[13px] text-[var(--foreground)] outline-none placeholder:text-[var(--faint)] focus:border-[var(--border-strong)] disabled:opacity-40"

@@ -52,6 +52,12 @@ export interface ConversationState {
   error: string | null;
   /** False in browsers without the Web Speech API, where typing is the fallback. */
   recognitionAvailable: boolean;
+  /**
+   * True when the recogniser exists but cannot run — permission refused, or
+   * Chrome's speech service unreachable. The session continues; only the
+   * listening half of it is lost.
+   */
+  recognitionBlocked: boolean;
   start: () => void;
   stop: () => void;
   /** Submit a typed turn, for browsers without speech recognition. */
@@ -103,6 +109,8 @@ export function useConversation(options: ConversationOptions): ConversationState
   const [interim, setInterim] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [recognitionAvailable, setRecognitionAvailable] = useState(false);
+  const [recognitionBlocked, setRecognitionBlocked] = useState(false);
+  const blockedRef = useRef(false);
 
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -125,7 +133,7 @@ export function useConversation(options: ConversationOptions): ConversationState
 
   const startRecognition = useCallback(() => {
     const Ctor = getConstructor();
-    if (!Ctor) return;
+    if (!Ctor || blockedRef.current) return;
 
     try {
       recognitionRef.current?.abort();
@@ -156,10 +164,23 @@ export function useConversation(options: ConversationOptions): ConversationState
       // "no-speech" and "aborted" are routine in a conversation with pauses,
       // and surfacing them as errors would make the interface look broken.
       if (event.error === "no-speech" || event.error === "aborted") return;
-      if (event.error === "not-allowed") {
-        setError("Microphone permission was refused.");
-        setStatus("error");
-        runningRef.current = false;
+
+      /**
+       * Losing the recogniser is not losing the session.
+       *
+       * Chrome's Web Speech implementation sends audio to a Google service, so
+       * it fails when permission is refused, when that service is unreachable,
+       * and on any offline machine — while the camera vitals, the acoustic
+       * measurements and typing all keep working perfectly well. Treating this
+       * as fatal would throw away the two thirds of the page that are fine.
+       */
+      if (
+        event.error === "not-allowed" ||
+        event.error === "service-not-allowed" ||
+        event.error === "network"
+      ) {
+        blockedRef.current = true;
+        setRecognitionBlocked(true);
         return;
       }
       setError(`Speech recognition error: ${event.error}`);
@@ -168,7 +189,7 @@ export function useConversation(options: ConversationOptions): ConversationState
     recognition.onend = () => {
       // Chrome ends the session on its own after a stretch of silence. If the
       // conversation is still meant to be listening, start it again.
-      if (runningRef.current && statusRef.current === "listening") {
+      if (runningRef.current && !blockedRef.current && statusRef.current === "listening") {
         try {
           recognition.start();
         } catch {
@@ -322,6 +343,10 @@ export function useConversation(options: ConversationOptions): ConversationState
     runningRef.current = true;
     finalTextRef.current = "";
     interimTextRef.current = "";
+    // Clear the block so that starting again retries recognition — the person
+    // may have granted permission, or come back online, since last time.
+    blockedRef.current = false;
+    setRecognitionBlocked(false);
     setError(null);
     setStatus("listening");
     startRecognition();
@@ -373,6 +398,7 @@ export function useConversation(options: ConversationOptions): ConversationState
     interim,
     error,
     recognitionAvailable,
+    recognitionBlocked,
     start,
     stop,
     sendText,

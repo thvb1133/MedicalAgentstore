@@ -113,10 +113,12 @@ export default function Home() {
 
           <p className="mt-5 text-[15px] leading-relaxed text-[var(--muted)]">
             Sanjivani Setu is a store of measurement agents that each extract a
-            real physiological signal from an ordinary camera. Pulse from the
-            colour of your skin. Fatigue from your eyelids. Tremor frequency
-            from your fingertips. The information was already there — this is
-            the software that reads it.
+            real physiological signal from an ordinary camera and microphone.
+            Pulse from the colour of your skin. Fatigue from your eyelids.
+            Tremor frequency from your fingertips. The steadiness of your vocal
+            folds. The information was already there — this is the software
+            that reads it, and one agent that will hold a spoken conversation
+            while it does.
           </p>
 
           <p className="mt-4 text-[13px] leading-relaxed text-[var(--faint)]">
