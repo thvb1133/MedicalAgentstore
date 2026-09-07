@@ -172,6 +172,151 @@ export function syntheticTremor(
   return { timestamps, x, y };
 }
 
+export interface SyntheticVoiceOptions {
+  fs: number;
+  seconds: number;
+  /** Mean fundamental frequency in Hz. */
+  f0Hz: number;
+  /** Target cycle-to-cycle period variation, as Praat's local jitter percent. */
+  jitterPercent?: number;
+  /** Target cycle-to-cycle amplitude variation, as local shimmer percent. */
+  shimmerPercent?: number;
+  /** Harmonics-to-noise ratio to synthesise, in dB. */
+  hnrDb?: number;
+  /** Peak-to-peak pitch movement, in semitones, as a slow contour. */
+  pitchRangeSemitones?: number;
+  /** Amplitude modulation rate standing in for syllables, in Hz. */
+  syllableRateHz?: number;
+  /** Silent intervals as [startSeconds, endSeconds] pairs. */
+  pauses?: Array<[number, number]>;
+  seed?: number;
+}
+
+/**
+ * A synthetic voice built cycle by cycle from glottal pulses.
+ *
+ * Building it per cycle rather than as a summed harmonic series is what makes
+ * it useful: jitter and shimmer are defined as cycle-to-cycle differences, so
+ * a generator that can place each cycle individually can produce a recording
+ * whose true jitter is known exactly, which is the only way to check that the
+ * analyser measures it rather than measuring its own peak-picking error.
+ *
+ * The pulse shape is the Rosenberg model — a rounded opening phase and a
+ * faster closing phase — which has a single unambiguous maximum per cycle.
+ */
+export function syntheticVoice(options: SyntheticVoiceOptions): Float64Array {
+  const {
+    fs,
+    seconds,
+    f0Hz,
+    jitterPercent = 0,
+    shimmerPercent = 0,
+    hnrDb = 25,
+    pitchRangeSemitones = 0,
+    syllableRateHz = 0,
+    pauses = [],
+    seed = 3,
+  } = options;
+
+  const rand = mulberry32(seed);
+  let spare: number | null = null;
+  const gauss = () => {
+    if (spare !== null) {
+      const value = spare;
+      spare = null;
+      return value;
+    }
+    const u = Math.max(rand(), 1e-9);
+    const v = rand();
+    const radius = Math.sqrt(-2 * Math.log(u));
+    spare = radius * Math.sin(2 * Math.PI * v);
+    return radius * Math.cos(2 * Math.PI * v);
+  };
+
+  // For periods T_i = T(1 + e_i) with e_i independent and normal with standard
+  // deviation s, the mean absolute successive difference is T·s·2/√π. Inverting
+  // that gives the s which produces the jitter percentage the caller asked for.
+  const periodSd = jitterPercent / 100 / (2 / Math.sqrt(Math.PI));
+  const amplitudeSd = shimmerPercent / 100 / (2 / Math.sqrt(Math.PI));
+
+  const n = Math.round(seconds * fs);
+  const out = new Float64Array(n);
+
+  const isPaused = (t: number) => pauses.some(([a, b]) => t >= a && t < b);
+
+  let cursor = 0;
+  while (cursor < n) {
+    const t = cursor / fs;
+    // Slow pitch contour, so the analyser sees a moving fundamental the way it
+    // would in real connected speech.
+    const semitoneOffset =
+      pitchRangeSemitones > 0
+        ? (pitchRangeSemitones / 2) * Math.sin(2 * Math.PI * 0.35 * t)
+        : 0;
+    const instantF0 = f0Hz * Math.pow(2, semitoneOffset / 12);
+
+    const period = (fs / instantF0) * (1 + gauss() * periodSd);
+    const periodSamples = Math.max(4, Math.round(period));
+
+    let amplitude = 1 + gauss() * amplitudeSd;
+    if (syllableRateHz > 0) {
+      // Never fully closes, so voicing stays continuous within a syllable run.
+      amplitude *= 0.55 + 0.45 * (0.5 * (1 - Math.cos(2 * Math.PI * syllableRateHz * t)));
+    }
+
+    // Rosenberg glottal pulse: open phase 40% of the cycle, closing 16%.
+    //
+    // Both are sized from the *nominal* period rather than this cycle's
+    // jittered one, so the pulse peak sits a constant distance after the cycle
+    // boundary. If the open phase stretched with each period, the peak-to-peak
+    // interval would be a blend of consecutive periods and the recording's
+    // true jitter would be lower than the figure asked for here — the
+    // generator would be quietly grading the analyser against the wrong
+    // answer. Holding the open phase steady while the period varies is also
+    // the more realistic of the two, since vocal-fold opening is governed by
+    // tissue mechanics rather than by the length of the cycle it lands in.
+    const nominalPeriod = fs / f0Hz;
+    const openLen = Math.max(2, Math.round(nominalPeriod * 0.4));
+    const closeLen = Math.max(1, Math.round(nominalPeriod * 0.16));
+    for (let i = 0; i < periodSamples && cursor + i < n; i++) {
+      let value: number;
+      if (i < openLen) {
+        value = 0.5 * (1 - Math.cos((Math.PI * i) / openLen));
+      } else if (i < openLen + closeLen) {
+        value = Math.cos((Math.PI * (i - openLen)) / (2 * closeLen));
+      } else {
+        value = 0;
+      }
+      out[cursor + i] = value * amplitude;
+    }
+    cursor += periodSamples;
+  }
+
+  for (let i = 0; i < n; i++) {
+    if (isPaused(i / fs)) out[i] = 0;
+  }
+
+  // Additive noise scaled to hit the requested harmonics-to-noise ratio,
+  // measured over the voiced part only so that inserting pauses does not
+  // silently change the achieved HNR.
+  let power = 0;
+  let voicedCount = 0;
+  for (let i = 0; i < n; i++) {
+    if (!isPaused(i / fs)) {
+      power += out[i] * out[i];
+      voicedCount++;
+    }
+  }
+  if (voicedCount > 0) {
+    const signalPower = power / voicedCount;
+    const noisePower = signalPower / Math.pow(10, hnrDb / 10);
+    const noiseSd = Math.sqrt(noisePower);
+    for (let i = 0; i < n; i++) out[i] += gauss() * noiseSd;
+  }
+
+  return out;
+}
+
 /** Finger tapping at a given rate, optionally with a decaying amplitude. */
 export function syntheticTapping(
   tapsPerSecond: number,
