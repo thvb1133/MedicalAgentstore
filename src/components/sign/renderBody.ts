@@ -66,19 +66,48 @@ function depthScale(z: number): number {
   return 1 + Math.min(1, Math.max(0, z)) * 0.28;
 }
 
+/**
+ * The small movements a person makes while not doing anything.
+ *
+ * A signer between signs is not a statue: they breathe, they shift, they
+ * blink. Held perfectly still the figure stops reading as a person and starts
+ * reading as a frozen render, which is also the failure mode that makes
+ * people ask whether the page has crashed.
+ */
+export interface Idle {
+  /** Seconds since the avatar mounted. */
+  time: number;
+}
+
+function idleSway(time: number): number {
+  // Two periods that do not divide into each other, so the motion never
+  // settles into an obvious loop.
+  return Math.sin(time * 0.9) * 0.006 + Math.sin(time * 0.37) * 0.004;
+}
+
+/** 0 open, 1 shut. A blink every few seconds, fast on the way down. */
+function idleBlink(time: number): number {
+  const period = 4.3;
+  const phase = time % period;
+  if (phase > 0.16) return 0;
+  return Math.sin((phase / 0.16) * Math.PI);
+}
+
 export function drawSigner(
   ctx: CanvasRenderingContext2D,
   frame: ResolvedFrame,
   width: number,
   height: number,
   theme: BodyTheme,
+  idle: Idle = { time: 0 },
 ) {
   // Fit the body box into the canvas with a margin, so a hand raised to the
   // forehead stays inside the frame.
   const unit = Math.min(width / 2.5, height / 2.9);
+  const breath = idleSway(idle.time);
   const project: Projector = (p) => ({
     x: width / 2 + p.x * unit,
-    y: height * 0.56 + p.y * unit,
+    y: height * 0.56 + (p.y + breath) * unit,
   });
 
   ctx.save();
@@ -95,7 +124,7 @@ export function drawSigner(
   drawArm(ctx, project(SHOULDER_RIGHT), rightWrist, "right", project, unit, theme);
   drawArm(ctx, project(SHOULDER_LEFT), leftWrist, "left", project, unit, theme);
 
-  drawHead(ctx, project, unit, frame.face, theme);
+  drawHead(ctx, project, unit, frame.face, theme, idleBlink(idle.time));
 
   // The non-dominant hand first: when the two overlap, the dominant hand is
   // almost always the one in front.
@@ -245,6 +274,7 @@ function drawHead(
   unit: number,
   face: FaceState,
   theme: BodyTheme,
+  blink: number,
 ) {
   const center = project({
     x: HEAD_CENTER.x + face.headTurn * 0.06,
@@ -276,7 +306,9 @@ function drawHead(
   // level of detail far better than rotating the whole ellipse.
   const shift = face.headTurn * r * 0.16;
 
-  const openness = 1 - Math.min(1, Math.max(0, face.squint));
+  // A blink closes the eyes on top of whatever the sign already asked for,
+  // so it cannot re-open eyes a sign deliberately shut.
+  const openness = 1 - Math.min(1, Math.max(0, Math.max(face.squint, blink)));
   ctx.fillStyle = theme.ink;
   for (const sign of [-1, 1]) {
     ctx.beginPath();

@@ -51,7 +51,7 @@ npm run dev
 Open <http://localhost:3000>. Camera access requires `localhost` or HTTPS.
 
 ```bash
-npm test              # 283 tests against synthetic signals with known ground truth
+npm test              # 288 tests against synthetic signals with known ground truth
 npm run typecheck
 npm run lint
 npm run build
@@ -190,7 +190,9 @@ The pieces that make that work:
 - **Named anchors instead of coordinates.** A lexicon entry reads "flat hand, fingertips at the chin, moves forward and down", which is how a signer would describe it. Someone who knows ASL can check all 46 entries without reading a joint angle, and each carries that written description into the interface.
 - **Two-bone arm IK.** Without arms the avatar is two hands floating in front of a torso, which reads as a glitch rather than as a person. Both elbow solutions are anatomically reachable, so the one that gets used is chosen by the rule real elbows follow: they hang, and they stay clear of the torso. Picking a fixed side instead folds the elbow in behind the chest whenever a hand goes above the shoulder.
 - **Non-manual markers, as grammar.** Raised brows make a yes/no question, drawn-together brows make a wh-question, a head shake negates. These are held across the whole clause rather than pulsed on one sign, because that is their scope. A signed question with a blank face is not a neutral question — it is a statement.
-- **Transitions timed by distance.** A hand crossing from the forehead to the opposite hip has four times as far to travel as one moving across the chest. Given the same fixed beat, the long one snaps, and a snap reads as a dropped frame rather than as movement.
+- **Transitions timed by distance.** A hand crossing from the forehead to the opposite hip has four times as far to travel as one moving across the chest. Given the same fixed beat, the long one snaps, and a snap reads as a dropped frame rather than as movement. The hands also come back down at the end of a sequence rather than cutting to rest, which on a loop was the single most visible discontinuity in the whole animation.
+- **Palm flips pass through edge-on.** Palm orientation is categorical in this model, so on its own it flips at the midpoint of a blend and the hand pops inside out in one frame. Narrowing the drawing as the flip approaches is the flat-model version of a wrist rotating, and it turns the one frame that reads as a glitch into a movement that reads as a wrist.
+- **The signer breathes and blinks.** Held perfectly still between signs the figure stops reading as a person and starts reading as a frozen render — which is also the failure mode that makes people ask whether the page has crashed.
 - **Depth faked by size.** Several signs are defined by moving toward the person being addressed — THANK-YOU, YOU, FINE. In a plane that is a hand that simply stops, so it is drawn larger as it comes forward.
 
 **These are real signs. This is not fluent ASL, and the interface says so in every place it appears.** ASL is not English with the words swapped: it orders a sentence topic-first, moves verbs through space to show who did what to whom, uses classifiers that no English word triggers, and carries whole pieces of grammar on the face. Anything driven by English text must walk the sentence left to right, which produces something closer to Signed Exact English — laborious for a fluent signer to read.

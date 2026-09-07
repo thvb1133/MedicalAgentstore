@@ -49,6 +49,14 @@ export interface HandPose {
   facing: PalmFacing;
   /** Wrist rotation in degrees. Negative tilts the fingertips left. */
   rotation: number;
+  /**
+   * Horizontal foreshortening, 0 edge-on to 1 square to the viewer.
+   *
+   * Normally implied by `facing` — a side view is narrower than a flat one.
+   * Set explicitly only while turning the wrist over, where the hand has to
+   * pass through edge-on to get from palm-front to palm-back.
+   */
+  squash?: number;
 }
 
 export interface Joint {
@@ -193,7 +201,7 @@ export function buildHand(pose: HandPose): HandGeometry {
    * approximation of that rotation, but it is the difference between a legible
    * C and four fingers fanned at the viewer.
    */
-  const squash = pose.facing === "side" ? SIDE_FORESHORTENING : 1;
+  const squash = pose.squash ?? (pose.facing === "side" ? SIDE_FORESHORTENING : 1);
   const halfWidth = (PALM_WIDTH * squash) / 2;
 
   // A palm slightly narrower at the wrist than at the knuckles.
@@ -325,7 +333,30 @@ export function blendPoses(a: HandPose, b: HandPose, t: number): HandPose {
     },
     facing: k < 0.5 ? a.facing : b.facing,
     rotation: lerp(a.rotation, b.rotation, k),
+    /*
+     * Turning the palm over goes through edge-on.
+     *
+     * `facing` is categorical, so on its own it flips at the midpoint and the
+     * hand pops inside-out in a single frame. A real wrist rotates: the hand
+     * narrows to its edge and opens out the other way. Narrowing the drawing
+     * as the flip approaches is the flat-model version of that, and it turns
+     * the one frame that reads as a glitch into a movement that reads as a
+     * wrist.
+     */
+    squash: turning(a, b) ? Math.max(0.12, Math.abs(2 * k - 1)) : lerp(widthOf(a), widthOf(b), k),
   };
+}
+
+function widthOf(pose: HandPose): number {
+  return pose.squash ?? (pose.facing === "side" ? SIDE_FORESHORTENING : 1);
+}
+
+/** True when the palm turns right over, front to back, rather than to the side. */
+function turning(a: HandPose, b: HandPose): boolean {
+  return (
+    (a.facing === "front" && b.facing === "back") ||
+    (a.facing === "back" && b.facing === "front")
+  );
 }
 
 /** Smoothstep, so a hand accelerates out of a shape and settles into the next. */

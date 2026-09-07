@@ -46,7 +46,16 @@ export interface SequenceStep {
 
 export interface Timeline {
   steps: SequenceStep[];
+  /** When the last step ends. */
   duration: number;
+  /**
+   * How long the hands take to come back down afterwards.
+   *
+   * Without it the signer teleports from the final sign to the rest position
+   * the instant the sequence ends, which is the most visible discontinuity in
+   * the whole animation — and on a loop it happens every pass.
+   */
+  settle: number;
 }
 
 function lengthOf(segment: Segment, lettersPerSecond: number): number {
@@ -87,7 +96,8 @@ export function buildTimeline(segments: Segment[], lettersPerSecond: number): Ti
     previous = segment;
   }
 
-  return { steps, duration: clock };
+  const settle = previous ? travelTime(endFrameOf(previous, lettersPerSecond), RESTING) : 0;
+  return { steps, duration: clock, settle };
 }
 
 export interface SigningState {
@@ -191,12 +201,24 @@ export function stateAt(
     return { frame: PAUSED, step, index: i, letter: null, finished: false };
   }
 
+  // Past the last step: bring the hands down rather than cutting to rest.
+  const last = timeline.steps[timeline.steps.length - 1];
+  const since = time - last.end;
+  const frame =
+    since >= timeline.settle
+      ? RESTING
+      : blendResolved(
+          endFrameOf(last.segment, lettersPerSecond),
+          RESTING,
+          ease(since / Math.max(1e-6, timeline.settle)),
+        );
+
   return {
-    frame: RESTING,
+    frame,
     step: null,
     index: timeline.steps.length,
     letter: null,
-    finished: true,
+    finished: since >= timeline.settle,
   };
 }
 

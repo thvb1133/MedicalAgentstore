@@ -10,6 +10,7 @@ import {
   type Point,
 } from "../src/lib/sign/body";
 import { HANDSHAPES } from "../src/lib/sign/handshapes";
+import { blendPoses, buildHand } from "../src/lib/sign/hand";
 import { LEXICON, frameOf, signFor } from "../src/lib/sign/lexicon";
 import { compose, coverage, glossOf } from "../src/lib/sign/compose";
 import { buildTimeline, stateAt } from "../src/lib/sign/sequence";
@@ -346,6 +347,24 @@ describe("the timeline", () => {
     expect(state.frame.right.at.y).toBeLessThan(ANCHORS.chest.y);
   });
 
+  it("brings the hands down at the end instead of cutting to rest", () => {
+    // Cutting was the single most visible discontinuity in the animation,
+    // and on a loop it happened once per pass.
+    expect(timeline.settle).toBeGreaterThan(0.1);
+    let previous = stateAt(timeline, timeline.duration - 0.02, 2.5);
+    for (let t = timeline.duration; t <= timeline.duration + timeline.settle + 0.3; t += 0.01) {
+      const current = stateAt(timeline, t, 2.5);
+      expect(
+        distance(previous.frame.right.at, current.frame.right.at),
+        `right hand jumped at t=${t.toFixed(2)}`,
+      ).toBeLessThan(0.09);
+      previous = current;
+    }
+    const settled = stateAt(timeline, timeline.duration + timeline.settle + 1, 2.5);
+    expect(settled.finished).toBe(true);
+    expect(settled.frame.right.at).toEqual(ANCHORS.restRight);
+  });
+
   it("copes with an empty timeline", () => {
     const empty = buildTimeline([], 2.5);
     const state = stateAt(empty, 1, 2.5);
@@ -415,5 +434,57 @@ describe("facial markers", () => {
     expect(blendFace(a, b, 0.5).brows).toBeCloseTo(0.5, 6);
     expect(blendFace(a, b, 0.4).mouth).toBe("neutral");
     expect(blendFace(a, b, 0.6).mouth).toBe("smile");
+  });
+});
+
+describe("turning the palm over", () => {
+  it("passes through edge-on rather than popping inside out", () => {
+    // `facing` is categorical, so without this the hand flips in a single
+    // frame and reads as a rendering glitch instead of as a wrist.
+    const front = HANDSHAPES.FLAT;
+    const back = { ...HANDSHAPES.FLAT, facing: "back" as const };
+
+    const widths = [];
+    for (let t = 0; t <= 1.0001; t += 0.05) {
+      widths.push(blendPoses(front, back, t).squash ?? 1);
+    }
+    expect(widths[0]).toBeCloseTo(1, 2);
+    expect(widths[widths.length - 1]).toBeCloseTo(1, 2);
+    // Narrow at the midpoint, which is where the flip happens, and widening
+    // away from it in both directions.
+    expect(blendPoses(front, back, 0.5).squash).toBeLessThan(0.2);
+    const middle = (widths.length - 1) / 2;
+    for (let i = 1; i < middle; i++) expect(widths[i]).toBeLessThan(widths[i - 1]);
+    for (let i = middle + 2; i < widths.length; i++) {
+      expect(widths[i]).toBeGreaterThan(widths[i - 1]);
+    }
+  });
+
+  it("leaves a blend that does not change facing at full width", () => {
+    const a = HANDSHAPES.FLAT;
+    const b = HANDSHAPES.S;
+    for (let t = 0; t <= 1; t += 0.1) {
+      expect(blendPoses(a, b, t).squash ?? 1).toBeCloseTo(1, 5);
+    }
+  });
+
+  it("keeps a side-facing shape narrow throughout", () => {
+    const c = HANDSHAPES.C;
+    const o = HANDSHAPES.O;
+    for (let t = 0; t <= 1; t += 0.1) {
+      const squash = blendPoses(c, o, t).squash ?? 1;
+      expect(squash).toBeLessThan(1);
+      expect(squash).toBeGreaterThan(0.2);
+    }
+  });
+
+  it("actually narrows the drawn palm", () => {
+    const wide = buildHand({ ...HANDSHAPES.FLAT, squash: 1 });
+    const edge = buildHand({ ...HANDSHAPES.FLAT, squash: 0.12 });
+    const span = (g: ReturnType<typeof buildHand>) => {
+      const xs = g.palm.map((p) => p.x);
+      return Math.max(...xs) - Math.min(...xs);
+    };
+    expect(span(edge)).toBeLessThan(span(wide) * 0.3);
   });
 });

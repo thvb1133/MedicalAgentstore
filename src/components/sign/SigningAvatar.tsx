@@ -96,6 +96,7 @@ export function SigningAvatar({
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
+    const mounted = performance.now();
     let raf = 0;
     let lastIndex = -2;
     let lastLetter: string | null = null;
@@ -130,6 +131,7 @@ export function SigningAvatar({
         width,
         height,
         bodyTheme(current.tone, current.accent, current.dark),
+        { time: (now - mounted) / 1000 },
       );
 
       raf = requestAnimationFrame(render);
