@@ -51,11 +51,11 @@ npm run dev
 Open <http://localhost:3000>. Camera access requires `localhost` or HTTPS.
 
 ```bash
-npm test              # 158 tests against synthetic signals with known ground truth
+npm test              # 235 tests against synthetic signals with known ground truth
 npm run typecheck
 npm run lint
 npm run build
-npm run verify:browser  # 48 checks in a real Chrome; needs the dev server running
+npm run verify:browser  # 66 checks in a real Chrome; needs the dev server running
 ```
 
 `verify:browser` covers what the unit tests structurally cannot. It serves the
@@ -64,9 +64,11 @@ checks that the WASM runtime and task models come from our own origin, that the
 face landmarker initialises and its detection loop runs, that the audio worklet
 captures and the analyser reports **130 Hz** back, and that with a faceless
 video the app reports nothing rather than inventing a plausible number. It
-also drives the avatar picker, books and cancels an appointment, and seeds a
+also drives the avatar picker, books and cancels an appointment, seeds a
 history to confirm that a low-quality reading is shown in the list but kept out
-of the trend.
+of the trend, reads the pixels of every fingerspelled handshape to prove the
+hand model actually draws rather than silently producing an empty canvas, and
+flips the theme to confirm the page repaints and remembers.
 
 `fetch-models` copies the MediaPipe WASM runtime out of `node_modules` and downloads the three `.task` models into `public/mediapipe`. If you skip it the app falls back to the Google CDN, but running it means a venue's wifi failing cannot take your demo down.
 
@@ -143,11 +145,56 @@ Six presences, each a distinct silhouette rather than a recolour, drawn live on 
 | **Kiran** | Everyday Indian English | Kajal, Indian English |
 | **Nova** | Brisk, minimal small talk | Stephen, American English |
 
-Twelve neural Polly voices across six accents, each previewable before it is chosen, with speaking rate adjustable from 60% to 125% through SSML prosody. The range is asymmetric on purpose: slowing down helps anyone hard of hearing, anyone reading captions alongside the audio, and anyone meeting an accent for the first time, while speeding past about 125% slurs the neural voices and helps almost nobody.
+Each has both an **illustrated portrait** and an **abstract presence**, and which one you see is a setting rather than a decision made for you. A face is easier to sit with for ten minutes and is what most people expect; a shape does not imply a person who never said any of this, which some people prefer from something handing them health information.
+
+You can also **upload your own picture**. It is cropped, scaled and re-encoded in the browser and kept in `localStorage`. It never leaves the device — a face is biometric data and is frequently a photograph of someone other than the person uploading it — and the re-encode drops the EXIF block, which on a phone photograph carries the GPS coordinates where it was taken.
+
+**The portraits do not lip-sync, and that is a decision rather than a gap.** Driving a mouth on a face from an audio envelope is the deepfake technique, differing only in intent. On a tool that says things like "your blood pressure looks raised", a face that appears to be speaking borrows the authority of a clinician who never said any of it — and someone who uploads a photograph of their own doctor would be making that face say things the person it belongs to never agreed to. The heartbeat ring, the voice-tracking rim and the thinking sweep carry the movement instead, which is the same information the abstract presence carried.
+
+Speaking rate is adjustable from 60% to 125% through SSML prosody. The range is asymmetric on purpose: slowing down helps anyone hard of hearing, anyone reading captions alongside the audio, and anyone meeting an accent for the first time, while speeding past about 125% slurs the neural voices and helps almost nobody.
 
 Choosing an avatar changes **how** the assistant speaks, never **what** it may say. The persona text is appended below the safety rules in the system prompt with an explicit statement that the rules win, and is capped at 1200 characters so it cannot dilute them by volume. `tests/converse.test.ts` asserts that property directly, including against a persona that tries to instruct the model to diagnose.
 
 Everything is stored in `localStorage` and never sent anywhere. The profile carries a name and an age band, which are the two fields most likely to count as personal data, and neither has any reason to leave the device.
+
+---
+
+## Talking in your own language
+
+Twenty-four languages, each previewable before it is chosen. A language only appears here when **all three** parts of the loop work in it: the browser recognises speech in it, Claude answers fluently in it, and Polly has a voice for it. Two out of three would be a language that half works, which is worse than not offering it — someone would choose it, be understood, and get an answer they could not read.
+
+Someone describing chest pain or a panic attack reaches for the words they learned as a child, and asking them to do that in a second language costs both accuracy and dignity. So this is not a translation layer over an English product; the recognition language, the reply language and the voice all move together.
+
+Three details are worth stating because they are the ones that are easy to get wrong:
+
+- **Changing language changes the voice.** A voice reading text in a language it was not trained on does not sound accented, it sounds broken — it applies the wrong phonology letter by letter. Keeping the current voice would be the more conservative-looking choice and the worse one.
+- **The reply follows the setting, not the input.** Medical vocabulary travels in English and people mix it in constantly; that is not a request to switch the whole conversation out from under them.
+- **Measurements stay as digits and standard units in every language.** "72 bpm" is what is written on the machine in the clinic. A localised number is one the person cannot repeat to anyone.
+
+Languages are listed by their endonym first — हिन्दी before Hindi — because someone looking for their own language is scanning for the word they call it, not the English name for it.
+
+Polly's neural coverage varies by language and changes over time, so `/api/speak` falls back to the standard engine when a voice has no neural model. A flatter voice is a much smaller problem than a companion that cannot speak at all to the person who chose that language.
+
+---
+
+## Fingerspelling
+
+The manual alphabet and the digits, drawn from a **parametric hand rig** rather than a set of pictures: a palm, five digits, three phalanges each, posed by curl and spread and then projected. Live at [`/sign`](http://localhost:3000/sign), where you can type anything and watch it spelled, with the full chart underneath to check it against.
+
+A rig rather than twenty-six drawings, for two reasons. Poses interpolate, so the hand travels between letters the way a hand does — and a fingerspelling reader follows that travel as much as the shapes, which is why cutting between stills is so much harder to read at the same rate. And a pose is a short list of numbers that can be inspected and corrected against a reference, which a bitmap cannot.
+
+**This is fingerspelling. It is not sign language, and the interface says so.** ASL, BSL and ISL are full languages whose grammar lives in movement, in facial expression, in where a sign is placed in the space in front of the signer, and in both hands at once. A single drawn hand cannot produce any of that, and shipping it under the word "sign language" would be a promise of access that could not be kept.
+
+What fingerspelling genuinely carries is names, medical terms and numbers — which Deaf signers fingerspell in ordinary conversation, and which is exactly what this application produces. So the companion pulls the measurements and names out of each reply and spells those alongside the full caption, rather than grinding through every article and preposition at two letters a second. Fingerspelling a whole sentence would be slower than reading the caption already on screen.
+
+Four letters are marked **approximate** wherever they appear: M, N, R and T each need one finger to cross behind or lie under another, which a hand flexed in a single plane cannot represent. They are flagged rather than quietly shipped as correct, because a reader who knows a shape is wrong can compensate and a reader who has been told it is right cannot.
+
+Some smaller decisions that turned out to matter:
+
+- **Every digit is outlined.** Six letters — A, E, M, N, S and T — are the same closed fist distinguished only by the thumb. Without a line around it, the thumb is the same colour as the palm it lies against and all six become one picture.
+- **Doubled letters dip.** Without a deliberate break, "LL" is a hand that does not move for two beats and the reader cannot tell one letter from two.
+- **J and Z carry their paths.** Both are defined by movement; without it, J is indistinguishable from I.
+- **Four skin tones.** A hand is a picture of a person's hand, and defaulting everybody to one shade is a choice rather than a neutral position.
 
 ---
 
@@ -160,7 +207,19 @@ For people who are Deaf, hard of hearing, or cannot speak:
 - **Every audio-only cue given a visible equivalent**, including whether the assistant is thinking, so silence is never ambiguous between "working" and "broken".
 - **Prompt changes**: the model is told its replies are being read rather than heard, so it never refers to its own tone of voice, and never asks someone to speak or remarks on their typing.
 
-**On sign language.** The avatar does not sign, and saying otherwise would be a claim of access we cannot honour. BSL, ASL and ISL are full languages with their own grammar, carrying meaning in facial expression, body shift and the space in front of the signer as much as in the hands. What is cheap to build is an avatar that fingerspells English letter by letter — and shipping that as "sign language" would be slow, wrong, and a fair sign that nobody involved had asked a Deaf person. Doing it properly needs a motion-captured signing avatar built and validated with Deaf signers, which is a project rather than a component. The app says this plainly in the settings panel rather than burying it.
+- **Fingerspelling**, as an option rather than a default — see the section above for what it is and what it is not.
+
+**On a signing avatar.** A companion that signs is a linguistics problem, not a rendering one, and it is not built without Deaf signers in the room. Doing it properly needs a motion-captured avatar validated by Deaf signers against a real grammar, which is a project rather than a component. The manual alphabet is a different and much smaller thing that can be done properly, is genuinely what signers use for names, numbers and medical terms, and is therefore here under its own name.
+
+---
+
+## Morning and night
+
+Both themes are real palettes rather than one inverted. Shadow does the separating work in a light interface where borders do it in a dark one, and the accents are darkened for the light theme because the saffron that reads as bright against near-black falls below 4.5:1 against white.
+
+Night is the default because the camera preview and the pulse trace carry the visual weight and both read better against a dark field. Morning exists because a dark interface is genuinely harder for a good many people to read — particularly older eyes and anyone with astigmatism, for whom light text on dark smears — and because these pages get used in daylight next to a window. When nothing has been chosen, the operating system preference wins: someone who has set their whole machine to light mode has already said what they want.
+
+The theme is applied by a small inline script in the document head, before first paint. A toggle that waits for React has already let the browser paint one frame of the wrong theme, which is the white flash that every dark-mode site with a client-side toggle gets wrong.
 
 ---
 
@@ -258,7 +317,8 @@ src/
   lib/voice/        engine                          — F0, jitter, shimmer, HNR
   lib/vision/       mediapipe loading, face regions
   lib/conversation  shared types, sensor-to-prose renderer, the system prompt
-  lib/avatar/       avatar presets, voice catalogue, the saved profile
+  lib/avatar/       presets, voices, languages, portraits, the saved profile
+  lib/sign/         the hand rig, the manual alphabet, spelling timing
   lib/appointments  booking rules and RFC 5545 calendar export
   lib/history       local store, merge with S3, trend building
   lib/agents/       the agent catalogue
@@ -267,8 +327,10 @@ src/
   components/       UI, one component per agent
   app/appointments  booking and upcoming sessions
   app/history       past readings, trends, Claude's review
+  app/sign          the fingerspelling studio and the alphabet chart
   app/api/          converse + interpret (Claude), speak (Polly), sessions (S3), services
 public/audio/       the capture worklet, which runs on the audio thread
+public/portraits/   the six illustrated companion faces
 tests/              synthetic signal generators and the suite
 ```
 

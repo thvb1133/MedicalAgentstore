@@ -28,18 +28,18 @@ export default function RootLayout({
     // data-theme before React runs, so the served markup and the DOM React
     // hydrates against will legitimately differ on this one attribute.
     <html lang="en" suppressHydrationWarning>
-      <head>
+      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
         {/*
           Theme applied before first paint.
 
           A toggle that waits for React has already let the browser paint one
           frame of the wrong theme, which is the white flash every dark site
-          with a client-side toggle gets wrong. This is the one case where a
-          blocking inline script is the right answer.
+          with a client-side toggle gets wrong. A blocking inline script is
+          the right answer here, and as the first child of the body it runs
+          before anything below it renders without Next warning about a
+          hand-written head.
         */}
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
-      </head>
-      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
         {children}
       </body>
     </html>

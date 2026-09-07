@@ -305,9 +305,12 @@ async function main() {
       (picker?.previews ?? 0) >= 6,
       `${picker?.previews ?? 0} canvases`,
     );
+    // Only the voices for the selected language are offered. A voice reading
+    // a language it was not trained on comes out as noise, so the count here
+    // is the English catalogue rather than every voice that exists.
     record(
       "voices can be previewed before choosing",
-      (picker?.voices ?? 0) >= 12,
+      (picker?.voices ?? 0) >= 3,
       `${picker?.voices ?? 0} preview buttons`,
     );
     record("access settings are offered", (picker?.toggles ?? 0) >= 3);
@@ -315,6 +318,57 @@ async function main() {
       "access mode is described for the people it is for",
       /Deaf|hard of hearing/i.test(picker?.text ?? ""),
     );
+    record(
+      "languages are named the way their speakers name them",
+      /हिन्दी/.test(picker?.text ?? "") && /日本語/.test(picker?.text ?? ""),
+    );
+    record(
+      "fingerspelling is offered as the manual alphabet, not as sign language",
+      /manual alphabet/i.test(picker?.text ?? "") &&
+        /not sign language|not American Sign Language/i.test(picker?.text ?? ""),
+    );
+    record(
+      "the portrait upload says the picture never leaves the device",
+      /never uploaded/i.test(picker?.text ?? ""),
+    );
+    record(
+      "the portrait upload says the face does not lip-sync",
+      /deepfake/i.test(picker?.text ?? ""),
+    );
+
+    // Changing language has to move the voice with it.
+    const languageSwitch = await page.evaluate(async () => {
+      const dialog = document.querySelector('[role="dialog"]');
+      if (!dialog) return null;
+      const before = [...dialog.querySelectorAll("button")]
+        .map((b) => b.getAttribute("aria-label"))
+        .filter((l) => l?.startsWith("Hear "));
+      const hindi = [...dialog.querySelectorAll("button")].find((b) =>
+        b.textContent?.includes("हिन्दी"),
+      );
+      if (!hindi) return null;
+      hindi.click();
+      await new Promise((r) => setTimeout(r, 400));
+      const after = [...dialog.querySelectorAll("button")]
+        .map((b) => b.getAttribute("aria-label"))
+        .filter((l) => l?.startsWith("Hear "));
+      return { before, after };
+    });
+    record(
+      "choosing a language changes which voices are offered",
+      (languageSwitch?.after?.length ?? 0) > 0 &&
+        languageSwitch.after.every((v) => !languageSwitch.before.includes(v)),
+      `${languageSwitch?.before?.length ?? 0} → ${languageSwitch?.after?.length ?? 0} voices`,
+    );
+
+    // Put it back so the rest of the run is in English.
+    await page.evaluate(() => {
+      const dialog = document.querySelector('[role="dialog"]');
+      [...(dialog?.querySelectorAll("button") ?? [])]
+        .find((b) => b.textContent?.includes("English (UK)"))
+        ?.click();
+    });
+    await new Promise((r) => setTimeout(r, 300));
 
     // Switching avatar must change the persona shown and survive a reload,
     // which is the whole point of storing the profile.
@@ -342,6 +396,95 @@ async function main() {
     record("the choice survives a reload", /Talk to Tara/.test(afterReload));
     record(
       "avatar picker ran without console errors",
+      consoleErrors.length === 0,
+      consoleErrors.slice(0, 2).join(" | "),
+    );
+
+    console.log("\nFingerspelling");
+    consoleErrors.length = 0;
+    await page.goto(`${BASE}/sign`, { waitUntil: "networkidle0" });
+    await new Promise((r) => setTimeout(r, 1200));
+
+    const sign = await page.evaluate(() => {
+      const canvases = [...document.querySelectorAll("canvas")];
+      // A blank canvas would pass a mere count, so check that pixels were
+      // actually written — a hand model that silently draws nothing is
+      // exactly the failure worth catching here.
+      const painted = canvases.filter((c) => {
+        const ctx = c.getContext("2d");
+        if (!ctx || c.width === 0) return false;
+        const { data } = ctx.getImageData(0, 0, c.width, c.height);
+        for (let i = 3; i < data.length; i += 4) if (data[i] > 8) return true;
+        return false;
+      }).length;
+      return { total: canvases.length, painted, text: document.body.innerText };
+    });
+
+    // Twenty-six letters, ten digits, and the animated hand.
+    record("the alphabet chart renders every shape", sign.total >= 37, `${sign.total} canvases`);
+    record("the handshapes are actually drawn", sign.painted >= 36, `${sign.painted} painted`);
+    record(
+      "the page says this is fingerspelling and not sign language",
+      /not American Sign Language/i.test(sign.text),
+    );
+    record(
+      "the approximate letters are declared",
+      /approximation/i.test(sign.text) && /M, N, R and T/.test(sign.text),
+    );
+
+    // The hand has to move, or a reader has nothing to follow between shapes.
+    const moved = await page.evaluate(async () => {
+      const canvas = document.querySelector("canvas");
+      const snap = () => {
+        const ctx = canvas.getContext("2d");
+        return ctx.getImageData(0, 0, canvas.width, canvas.height).data.join(",");
+      };
+      const before = snap();
+      await new Promise((r) => setTimeout(r, 700));
+      return before !== snap();
+    });
+    record("the hand animates between letters", moved);
+    record(
+      "fingerspelling ran without console errors",
+      consoleErrors.length === 0,
+      consoleErrors.slice(0, 2).join(" | "),
+    );
+
+    console.log("\nTheme");
+    consoleErrors.length = 0;
+    const theme = await page.evaluate(async () => {
+      const root = document.documentElement;
+      const readBackground = () => getComputedStyle(document.body).backgroundColor;
+      const first = { theme: root.getAttribute("data-theme"), background: readBackground() };
+      const toggle = [...document.querySelectorAll('[role="switch"]')].find((b) =>
+        b.getAttribute("aria-label")?.includes("theme"),
+      );
+      if (!toggle) return null;
+      toggle.click();
+      await new Promise((r) => setTimeout(r, 300));
+      const second = { theme: root.getAttribute("data-theme"), background: readBackground() };
+      return { first, second, stored: localStorage.getItem("sanjivani-setu.theme") };
+    });
+    record("a theme toggle is present", theme !== null);
+    record(
+      "toggling actually repaints the page",
+      theme && theme.first.background !== theme.second.background,
+      `${theme?.first.theme} → ${theme?.second.theme}`,
+    );
+    record("the choice is remembered", theme?.stored === theme?.second.theme);
+
+    await page.reload({ waitUntil: "networkidle0" });
+    const persisted = await page.evaluate(() => ({
+      applied: document.documentElement.getAttribute("data-theme"),
+      // The pre-paint script has to have run before React, or the page shows
+      // one frame of the wrong theme — the flash every dark-mode site with a
+      // client-side toggle gets wrong.
+      beforeReact: document.documentElement.hasAttribute("data-theme"),
+    }));
+    record("the theme is applied before first paint", persisted.beforeReact);
+    record("the theme survives a reload", persisted.applied === theme?.second.theme);
+    record(
+      "theme ran without console errors",
       consoleErrors.length === 0,
       consoleErrors.slice(0, 2).join(" | "),
     );
@@ -489,6 +632,7 @@ async function main() {
       "/agents/companion",
       "/appointments",
       "/history",
+      "/sign",
     ]) {
       consoleErrors.length = 0;
       const res = await page.goto(`${BASE}${path}`, { waitUntil: "networkidle0" });

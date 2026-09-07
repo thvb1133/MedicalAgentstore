@@ -39,8 +39,12 @@ const SHOTS = [
     start: "Change avatar",
     startWait: 2000,
   },
+  { path: "/sign", name: "fingerspelling", wait: 2500 },
   { path: "/appointments", name: "appointments", wait: 1500, seed: "appointments" },
   { path: "/history", name: "history", wait: 2000, seed: "history" },
+  // The home page again in the light theme, since both are real palettes
+  // rather than one inverted and a dark-only shot only shows half the work.
+  { path: "/", name: "home_morning", wait: 1500, theme: "morning" },
 ];
 
 /**
@@ -176,6 +180,12 @@ async function main() {
 
     for (const shot of SHOTS) {
       await page.goto(`${BASE}${shot.path}`, { waitUntil: "networkidle0" });
+      if (shot.theme) {
+        await page.evaluate((theme) => {
+          window.localStorage.setItem("sanjivani-setu.theme", theme);
+        }, shot.theme);
+        await page.reload({ waitUntil: "networkidle0" });
+      }
       if (shot.seed) {
         await page.evaluate((entries) => {
           for (const [key, value] of Object.entries(entries)) {
@@ -194,7 +204,7 @@ async function main() {
       }
       await new Promise((r) => setTimeout(r, shot.wait));
       const file = `${OUT}/${shot.name}.png`;
-      await page.screenshot({ path: file, fullPage: shot.path === "/" });
+      await page.screenshot({ path: file, fullPage: shot.path === "/" || shot.path === "/sign" });
       console.log(`  wrote ${file}`);
     }
   } finally {
