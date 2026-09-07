@@ -262,8 +262,10 @@ export function AvatarPresence({
       const currentStatus = statusRef.current;
       const currentAvatar = avatarRef.current;
       const cx = cssWidth / 2;
-      const cy = cssHeight / 2;
-      const base = Math.min(cssWidth, cssHeight) * 0.2;
+      // Sat slightly above centre in the full-size view, so the outermost ring
+      // clears the caption strip instead of running through the text.
+      const cy = compact ? cssHeight / 2 : cssHeight * 0.45;
+      const base = Math.min(cssWidth, cssHeight) * (compact ? 0.2 : 0.17);
       const palette = paletteFor(currentAvatar, currentStatus);
 
       smoothedLevel += (levelRef.current - smoothedLevel) * 0.2;
@@ -303,7 +305,9 @@ export function AvatarPresence({
 
       // The level ring doubles as proof the microphone is working, which is
       // the question people actually have when nothing seems to be happening.
-      if (currentStatus === "listening") {
+      // The wave style already shows level in its bars, and a ring around bars
+      // reads as a stray arc with nothing to belong to.
+      if (currentStatus === "listening" && currentAvatar.style !== "wave") {
         const sweep = Math.PI * 2 * Math.min(1, smoothedLevel);
         ctx.beginPath();
         ctx.arc(cx, cy, radius * 2.1, -Math.PI / 2, -Math.PI / 2 + sweep);
@@ -318,7 +322,7 @@ export function AvatarPresence({
 
     frame = requestAnimationFrame(render);
     return () => cancelAnimationFrame(frame);
-  }, [height]);
+  }, [height, compact]);
 
   const caption =
     status === "listening"

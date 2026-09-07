@@ -234,7 +234,7 @@ async function main() {
     await page.goto(`${BASE}/agents/companion`, { waitUntil: "networkidle0" });
     const startedConversation = await page.evaluate(() => {
       const button = [...document.querySelectorAll("button")].find((b) =>
-        b.textContent?.includes("Start conversation"),
+        b.textContent?.startsWith("Talk to"),
       );
       if (!button) return false;
       button.click();
@@ -270,6 +270,215 @@ async function main() {
       consoleErrors.slice(0, 2).join(" | "),
     );
 
+    console.log("\nAvatar picker");
+    consoleErrors.length = 0;
+    await page.goto(`${BASE}/agents/companion`, { waitUntil: "networkidle0" });
+    const openedSettings = await page.evaluate(() => {
+      const button = [...document.querySelectorAll("button")].find(
+        (b) => b.textContent?.trim() === "Change avatar",
+      );
+      if (!button) return false;
+      button.click();
+      return true;
+    });
+    record("companion exposes an avatar control", openedSettings);
+
+    await new Promise((r) => setTimeout(r, 800));
+    const picker = await page.evaluate(() => {
+      const dialog = document.querySelector('[role="dialog"]');
+      if (!dialog) return null;
+      return {
+        // Each avatar preview is a live canvas, so counting them confirms the
+        // presence renderer mounted once per option rather than the grid
+        // being a set of placeholders.
+        previews: dialog.querySelectorAll("canvas").length,
+        voices: [...dialog.querySelectorAll("button")].filter(
+          (b) => b.getAttribute("aria-label")?.startsWith("Hear "),
+        ).length,
+        toggles: dialog.querySelectorAll('[role="switch"]').length,
+        text: dialog.innerText,
+      };
+    });
+    record("avatar picker opens", picker !== null);
+    record(
+      "every avatar renders a live preview",
+      (picker?.previews ?? 0) >= 6,
+      `${picker?.previews ?? 0} canvases`,
+    );
+    record(
+      "voices can be previewed before choosing",
+      (picker?.voices ?? 0) >= 12,
+      `${picker?.voices ?? 0} preview buttons`,
+    );
+    record("access settings are offered", (picker?.toggles ?? 0) >= 3);
+    record(
+      "access mode is described for the people it is for",
+      /Deaf|hard of hearing/i.test(picker?.text ?? ""),
+    );
+
+    // Switching avatar must change the persona shown and survive a reload,
+    // which is the whole point of storing the profile.
+    const switched = await page.evaluate(() => {
+      const dialog = document.querySelector('[role="dialog"]');
+      if (!dialog) return false;
+      const target = [...dialog.querySelectorAll("button")].find((b) =>
+        b.textContent?.includes("Tara"),
+      );
+      if (!target) return false;
+      target.click();
+      const done = [...dialog.querySelectorAll("button")].find(
+        (b) => b.textContent?.trim() === "Done",
+      );
+      done?.click();
+      return true;
+    });
+    await new Promise((r) => setTimeout(r, 500));
+    const afterSwitch = await page.evaluate(() => document.body.innerText);
+    record("choosing an avatar takes effect", switched && /Talk to Tara/.test(afterSwitch));
+
+    await page.reload({ waitUntil: "networkidle0" });
+    await new Promise((r) => setTimeout(r, 800));
+    const afterReload = await page.evaluate(() => document.body.innerText);
+    record("the choice survives a reload", /Talk to Tara/.test(afterReload));
+    record(
+      "avatar picker ran without console errors",
+      consoleErrors.length === 0,
+      consoleErrors.slice(0, 2).join(" | "),
+    );
+
+    console.log("\nAppointments");
+    consoleErrors.length = 0;
+    await page.goto(`${BASE}/appointments`, { waitUntil: "networkidle0" });
+    await new Promise((r) => setTimeout(r, 600));
+
+    const booked = await page.evaluate(() => {
+      const date = document.querySelector('input[type="date"]');
+      const time = document.querySelector('input[type="time"]');
+      if (!date || !time) return "no date or time field";
+
+      const setValue = (el, value) => {
+        const setter = Object.getOwnPropertyDescriptor(
+          window.HTMLInputElement.prototype,
+          "value",
+        ).set;
+        setter.call(el, value);
+        el.dispatchEvent(new Event("input", { bubbles: true }));
+      };
+
+      const when = new Date(Date.now() + 3 * 86400000);
+      const pad = (n) => String(n).padStart(2, "0");
+      setValue(date, `${when.getFullYear()}-${pad(when.getMonth() + 1)}-${pad(when.getDate())}`);
+      setValue(time, "10:30");
+
+      const book = [...document.querySelectorAll("button")].find(
+        (b) => b.textContent?.trim() === "Book it",
+      );
+      if (!book) return "no book button";
+      book.click();
+      return "clicked";
+    });
+    record("booking form is complete", booked === "clicked", booked);
+
+    await new Promise((r) => setTimeout(r, 600));
+    const appointmentsText = await page.evaluate(() => document.body.innerText);
+    record(
+      "the appointment appears in the list",
+      /Add to calendar/.test(appointmentsText) && !/Nothing booked/.test(appointmentsText),
+    );
+    record(
+      "the page is honest that no reminder will be sent",
+      /Nobody is expecting you/i.test(appointmentsText),
+    );
+
+    const stored = await page.evaluate(() => {
+      const raw = window.localStorage.getItem("sanjivani-setu.appointments.v1");
+      return raw ? JSON.parse(raw).length : 0;
+    });
+    record("the appointment persists", stored === 1, `${stored} stored`);
+
+    // Booking a time that has already gone must be refused, not silently
+    // accepted into a list of things that will never happen.
+    const rejected = await page.evaluate(() => {
+      const date = document.querySelector('input[type="date"]');
+      const setter = Object.getOwnPropertyDescriptor(
+        window.HTMLInputElement.prototype,
+        "value",
+      ).set;
+      setter.call(date, "2020-01-01");
+      date.dispatchEvent(new Event("input", { bubbles: true }));
+      [...document.querySelectorAll("button")]
+        .find((b) => b.textContent?.trim() === "Book it")
+        ?.click();
+      return true;
+    });
+    await new Promise((r) => setTimeout(r, 400));
+    const afterBad = await page.evaluate(() => document.body.innerText);
+    const stillOne = await page.evaluate(() => {
+      const raw = window.localStorage.getItem("sanjivani-setu.appointments.v1");
+      return raw ? JSON.parse(raw).length : 0;
+    });
+    record(
+      "a past time is refused with a reason",
+      rejected && /already passed/i.test(afterBad) && stillOne === 1,
+    );
+    record(
+      "appointments ran without console errors",
+      consoleErrors.length === 0,
+      consoleErrors.slice(0, 2).join(" | "),
+    );
+
+    console.log("\nHistory");
+    consoleErrors.length = 0;
+    await page.goto(`${BASE}/history`, { waitUntil: "networkidle0" });
+    await new Promise((r) => setTimeout(r, 600));
+    const emptyHistory = await page.evaluate(() => document.body.innerText);
+    record("empty history invites a first reading", /Nothing measured yet/i.test(emptyHistory));
+
+    // Seed a series with one deliberately unusable reading in it, to prove the
+    // trend excludes it while the list still shows it.
+    await page.evaluate(() => {
+      const at = (day) => new Date(Date.UTC(2026, 2, day, 9)).toISOString();
+      const reading = (day, hr, quality) => ({
+        agentSlug: "vitals",
+        agentName: "Contactless Vitals",
+        takenAt: at(day),
+        durationSeconds: 45,
+        quality,
+        qualityNote: quality < 0.5 ? "Too much movement" : null,
+        metrics: [
+          { label: "Heart rate", value: hr, unit: "bpm" },
+          { label: "Breathing rate", value: 14, unit: "/min" },
+        ],
+      });
+      window.localStorage.setItem(
+        "sanjivani-setu.history.v1",
+        JSON.stringify([reading(1, 68, 0.8), reading(2, 210, 0.2), reading(3, 76, 0.9)]),
+      );
+    });
+    await page.reload({ waitUntil: "networkidle0" });
+    await new Promise((r) => setTimeout(r, 800));
+
+    const historyText = await page.evaluate(() => document.body.innerText);
+    const sparklines = await page.evaluate(
+      () => document.querySelectorAll('svg[role="img"]').length,
+    );
+    record("trends are drawn", sparklines >= 1, `${sparklines} sparklines`);
+    record("the trend counts only usable readings", /2 usable readings/i.test(historyText));
+    record(
+      "an unusable reading is still shown, and labelled",
+      /too noisy to use/i.test(historyText),
+    );
+    record(
+      "the unusable value is kept out of the trend",
+      // Uppercased by CSS, so innerText reads "EVERY READING".
+      !/\b210\b/.test(historyText.split(/every reading/i)[0]),
+    );
+    record(
+      "history ran without console errors",
+      consoleErrors.length === 0,
+      consoleErrors.slice(0, 2).join(" | "),
+    );
+
     console.log("\nPage mounting");
     for (const path of [
       "/",
@@ -278,6 +487,8 @@ async function main() {
       "/agents/motor",
       "/agents/fast",
       "/agents/companion",
+      "/appointments",
+      "/history",
     ]) {
       consoleErrors.length = 0;
       const res = await page.goto(`${BASE}${path}`, { waitUntil: "networkidle0" });

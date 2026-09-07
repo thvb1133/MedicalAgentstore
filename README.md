@@ -51,11 +51,11 @@ npm run dev
 Open <http://localhost:3000>. Camera access requires `localhost` or HTTPS.
 
 ```bash
-npm test              # 93 tests against synthetic signals with known ground truth
+npm test              # 158 tests against synthetic signals with known ground truth
 npm run typecheck
 npm run lint
 npm run build
-npm run verify:browser  # 25 checks in a real Chrome; needs the dev server running
+npm run verify:browser  # 48 checks in a real Chrome; needs the dev server running
 ```
 
 `verify:browser` covers what the unit tests structurally cannot. It serves the
@@ -63,7 +63,10 @@ camera from a canvas and the microphone from a 130 Hz sawtooth oscillator, then
 checks that the WASM runtime and task models come from our own origin, that the
 face landmarker initialises and its detection loop runs, that the audio worklet
 captures and the analyser reports **130 Hz** back, and that with a faceless
-video the app reports nothing rather than inventing a plausible number.
+video the app reports nothing rather than inventing a plausible number. It
+also drives the avatar picker, books and cancels an appointment, and seeds a
+history to confirm that a low-quality reading is shown in the list but kept out
+of the trend.
 
 `fetch-models` copies the MediaPipe WASM runtime out of `node_modules` and downloads the three `.task` models into `public/mediapipe`. If you skip it the app falls back to the Google CDN, but running it means a venue's wifi failing cannot take your demo down.
 
@@ -124,6 +127,56 @@ The companion mirrors the shape of a hackathon project that assembled seven comm
 | Deepgram ASR | **Web Speech API** | Free and built in. The trade-off is real: absent in Firefox, and it needs the network. Typing is a first-class alternative, not a fallback. |
 
 Net effect: seven paid providers reduced to two, and the two that remain are ones you already hold keys for.
+
+---
+
+## Choosing a companion
+
+Six presences, each a distinct silhouette rather than a recolour, drawn live on a canvas. All of them pulse in time with the heart rate the camera is reading, using a pulse-wave shape rather than a sine, and fall back to a slow breathing rhythm — deliberately far below any plausible pulse — when there is no measurement to show.
+
+| | Manner | Default voice |
+|---|---|---|
+| **Asha** | Warm and steady | Amy, British English |
+| **Vikram** | Calm and precise; names the measurement before interpreting it | Arthur, British English |
+| **Tara** | Gentle and unhurried, built for older users | Ruth, slow and clear |
+| **Pip** | Simple and encouraging, built for children | Ivy, a child's voice |
+| **Kiran** | Everyday Indian English | Kajal, Indian English |
+| **Nova** | Brisk, minimal small talk | Stephen, American English |
+
+Twelve neural Polly voices across six accents, each previewable before it is chosen, with speaking rate adjustable from 60% to 125% through SSML prosody. The range is asymmetric on purpose: slowing down helps anyone hard of hearing, anyone reading captions alongside the audio, and anyone meeting an accent for the first time, while speeding past about 125% slurs the neural voices and helps almost nobody.
+
+Choosing an avatar changes **how** the assistant speaks, never **what** it may say. The persona text is appended below the safety rules in the system prompt with an explicit statement that the rules win, and is capped at 1200 characters so it cannot dilute them by volume. `tests/converse.test.ts` asserts that property directly, including against a persona that tries to instruct the model to diagnose.
+
+Everything is stored in `localStorage` and never sent anywhere. The profile carries a name and an age band, which are the two fields most likely to count as personal data, and neither has any reason to leave the device.
+
+---
+
+## Access mode
+
+For people who are Deaf, hard of hearing, or cannot speak:
+
+- **Captions as a primary surface**, not a strip along the bottom — high contrast, generous line height, and a measure capped near 60 characters, because long lines are exactly what makes a wall of text hard to read.
+- **Typing promoted over speaking**, with a larger input. This was already a first-class path rather than a fallback: Web Speech is absent in Firefox entirely, and speech recognition is least reliable for precisely the accents and speech differences a tool like this should serve worst-first.
+- **Every audio-only cue given a visible equivalent**, including whether the assistant is thinking, so silence is never ambiguous between "working" and "broken".
+- **Prompt changes**: the model is told its replies are being read rather than heard, so it never refers to its own tone of voice, and never asks someone to speak or remarks on their typing.
+
+**On sign language.** The avatar does not sign, and saying otherwise would be a claim of access we cannot honour. BSL, ASL and ISL are full languages with their own grammar, carrying meaning in facial expression, body shift and the space in front of the signer as much as in the hands. What is cheap to build is an avatar that fingerspells English letter by letter — and shipping that as "sign language" would be slow, wrong, and a fair sign that nobody involved had asked a Deaf person. Doing it properly needs a motion-captured signing avatar built and validated with Deaf signers, which is a project rather than a component. The app says this plainly in the settings panel rather than burying it.
+
+---
+
+## Appointments and history
+
+**Appointments** are local to the browser. There is no scheduling server, no email and no SMS, so nobody is expecting you — the page says exactly that. Which is why every appointment exports an `.ics` with a 15-minute alarm: handing the reminder to a calendar app is the only way one actually reaches you, and faking a notification system we cannot deliver would be worse than being honest. Bookings are validated against a past time, a time more than a year out, and a duration that is not offered.
+
+**History** is what makes any of this more than a curiosity. A single webcam heart rate says almost nothing; the same measurement over weeks, compared against that person's own earlier readings, might. Comparing someone to themselves last Tuesday is also far safer ground than comparing them to a population norm, which is where this technology usually gets people into trouble.
+
+- Readings are saved on **session end**, not continuously — vitals only settle after the first half-minute, and saving every intermediate estimate would fill the record with the noisy start of every session.
+- Below 0.5 quality a reading is **shown in the list and excluded from every trend**, and labelled as such. Hiding it would make the record dishonest; letting it bend a trend line would make the trend a lie.
+- A trend needs **at least two readings** before it is drawn at all. A line through one point invites exactly the over-reading this project spends most of its effort preventing.
+- A change smaller than 2% of the average is reported as **steady** rather than a direction, because below that it is measurement scatter.
+- Claude can read the sequence, and is instructed to say which comparisons the signal quality does not support.
+
+Local `localStorage` is the source of truth. The S3 mirror is optional and only for using more than one machine; neither store ever holds a frame of video or a second of audio.
 
 ---
 
@@ -204,11 +257,16 @@ src/
   lib/fast/         engine                          — face, arms, speech
   lib/voice/        engine                          — F0, jitter, shimmer, HNR
   lib/vision/       mediapipe loading, face regions
-  lib/conversation  shared types + the sensor-to-prose renderer
+  lib/conversation  shared types, sensor-to-prose renderer, the system prompt
+  lib/avatar/       avatar presets, voice catalogue, the saved profile
+  lib/appointments  booking rules and RFC 5545 calendar export
+  lib/history       local store, merge with S3, trend building
   lib/agents/       the agent catalogue
   lib/server/       config; the only place secrets are read
-  hooks/            camera, face/hand/pose tracking, vitals, voice, conversation
+  hooks/            camera, face/hand/pose tracking, vitals, voice, conversation, profile
   components/       UI, one component per agent
+  app/appointments  booking and upcoming sessions
+  app/history       past readings, trends, Claude's review
   app/api/          converse + interpret (Claude), speak (Polly), sessions (S3), services
 public/audio/       the capture worklet, which runs on the audio thread
 tests/              synthetic signal generators and the suite

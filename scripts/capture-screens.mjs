@@ -27,12 +27,94 @@ const SHOTS = [
     path: "/agents/companion",
     name: "companion_agent",
     wait: 1500,
-    start: "Start conversation",
+    start: "Talk to",
     // Long enough for the acoustic analyser to fill its rolling window, so the
     // shot shows populated measurements rather than an empty panel.
     startWait: 14000,
   },
+  {
+    path: "/agents/companion",
+    name: "avatar_picker",
+    wait: 2500,
+    start: "Change avatar",
+    startWait: 2000,
+  },
+  { path: "/appointments", name: "appointments", wait: 1500, seed: "appointments" },
+  { path: "/history", name: "history", wait: 2000, seed: "history" },
 ];
+
+/**
+ * Sample data for the two pages that are empty on a fresh browser.
+ *
+ * Screenshotting the empty state of a history page communicates nothing, so
+ * these seed a plausible few days — including one deliberately poor reading,
+ * because how a bad measurement is presented is the more interesting half of
+ * the design.
+ */
+const SEEDS = {
+  appointments: () => {
+    const at = (days, hour) => {
+      const d = new Date();
+      d.setDate(d.getDate() + days);
+      d.setHours(hour, 30, 0, 0);
+      return d.toISOString();
+    };
+    return {
+      "sanjivani-setu.appointments.v1": [
+        {
+          id: "seed1",
+          agentSlug: "companion",
+          agentName: "Live Wellness Companion",
+          startsAt: at(1, 9),
+          durationMinutes: 20,
+          reason: "Weekly check-in, same time each week so the readings compare.",
+          status: "scheduled",
+          createdAt: new Date().toISOString(),
+        },
+        {
+          id: "seed2",
+          agentSlug: "vitals",
+          agentName: "Contactless Vitals",
+          startsAt: at(4, 8),
+          durationMinutes: 10,
+          reason: "",
+          status: "scheduled",
+          createdAt: new Date().toISOString(),
+        },
+      ],
+    };
+  },
+  history: () => {
+    const reading = (daysAgo, hr, br, hrv, quality) => {
+      const d = new Date();
+      d.setDate(d.getDate() - daysAgo);
+      d.setHours(8, 15, 0, 0);
+      return {
+        agentSlug: "vitals",
+        agentName: "Contactless Vitals",
+        takenAt: d.toISOString(),
+        durationSeconds: 45,
+        quality,
+        qualityNote: quality < 0.5 ? "Too much head movement to trust this one" : null,
+        metrics: [
+          { label: "Heart rate", value: hr, unit: "bpm" },
+          { label: "Breathing rate", value: br, unit: "/min" },
+          { label: "HRV (SDNN)", value: hrv, unit: "ms" },
+        ],
+      };
+    };
+    return {
+      "sanjivani-setu.history.v1": [
+        reading(0, 66, 13, 58, 0.88),
+        reading(1, 69, 14, 54, 0.81),
+        reading(2, 132, 22, 12, 0.24),
+        reading(3, 71, 14, 49, 0.76),
+        reading(5, 74, 15, 45, 0.83),
+        reading(7, 72, 14, 47, 0.79),
+      ],
+    };
+  },
+};
 
 async function main() {
   if (!CHROME) throw new Error("No Chrome binary found. Set CHROME_PATH.");
@@ -94,6 +176,14 @@ async function main() {
 
     for (const shot of SHOTS) {
       await page.goto(`${BASE}${shot.path}`, { waitUntil: "networkidle0" });
+      if (shot.seed) {
+        await page.evaluate((entries) => {
+          for (const [key, value] of Object.entries(entries)) {
+            window.localStorage.setItem(key, JSON.stringify(value));
+          }
+        }, SEEDS[shot.seed]());
+        await page.reload({ waitUntil: "networkidle0" });
+      }
       if (shot.start) {
         await page.evaluate((label) => {
           [...document.querySelectorAll("button")]

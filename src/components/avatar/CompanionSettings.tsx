@@ -344,6 +344,37 @@ export function CompanionSettings({
               />
             </div>
 
+            {/*
+              An honest note rather than a feature.
+
+              A signing avatar is not a rendering problem, it is a linguistics
+              problem: BSL, ASL and ISL are separate languages with their own
+              grammar, and meaning lives in facial expression, body shift and
+              the space in front of the signer as much as in the hands. What is
+              cheap to build is an avatar that fingerspells English letter by
+              letter, and shipping that under the word "sign language" would be
+              a claim of access we cannot honour — a Deaf user would find it
+              slow, wrong, and a fair sign that nobody involved asked one.
+            */}
+            <div
+              className="mt-3 rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] p-3"
+            >
+              <div className="text-[12px] font-medium text-[var(--foreground)]">
+                About sign language
+              </div>
+              <p className="mt-1.5 text-[11.5px] leading-relaxed text-[var(--muted)]">
+                The avatar does not sign, and it would be wrong of us to say
+                otherwise. BSL, ASL and ISL are full languages with their own
+                grammar, carried as much by facial expression and body position
+                as by the hands — an avatar that spelled English out letter by
+                letter would be slow, wrong, and not sign language at all.
+                Doing it properly needs a motion-captured signing avatar built
+                and checked with Deaf signers. Until then this gives you full
+                captions, typing as a first-class way in, and a visible cue
+                everywhere there would otherwise be only a sound.
+              </p>
+            </div>
+
             <div className="mt-3">
               <div className="mb-1.5 text-[12px] text-[var(--muted)]">Captions</div>
               <div className="flex flex-wrap gap-2">
