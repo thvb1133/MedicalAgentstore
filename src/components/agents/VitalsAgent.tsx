@@ -10,9 +10,12 @@ import { QualityMeter } from "@/components/QualityMeter";
 import { SafetyNotice } from "@/components/SafetyNotice";
 import { BpCalibrationCard } from "@/components/agents/BpCalibrationCard";
 import { useCamera } from "@/hooks/useCamera";
+import { useCompanionProfile } from "@/hooks/useCompanionProfile";
 import { useFaceTracking, type FaceFrame } from "@/hooks/useFaceTracking";
+import { useServices } from "@/hooks/useServices";
 import { useVitals } from "@/hooks/useVitals";
 import type { AgentDefinition } from "@/lib/agents/registry";
+import { addLocalReport } from "@/lib/history";
 import type { MeasurementReport } from "@/lib/report";
 
 const WINDOW_SECONDS = 30;
@@ -20,6 +23,10 @@ const WINDOW_SECONDS = 30;
 export function VitalsAgent({ agent }: { agent: AgentDefinition }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [running, setRunning] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  const { services } = useServices();
+  const { profile } = useCompanionProfile();
 
   const camera = useCamera(videoRef, running, { idealFps: 30 });
   const { snapshot, pushFrame, reset, calibration, addCuffReading, clearCalibration } =
@@ -82,6 +89,34 @@ export function VitalsAgent({ agent }: { agent: AgentDefinition }) {
     };
   }, [agent, snapshot, quality, hrv]);
 
+  /**
+   * File the measurement when the session ends.
+   *
+   * Not on every update: the report memo recomputes several times a second
+   * and vitals only settle after the first half-minute, so saving
+   * continuously would fill the history with the noisy early part of every
+   * session. A reading too poor to mean anything is not saved at all, since
+   * it would sit in the trend implying it was a measurement.
+   */
+  const reportRef = useRef(report);
+  reportRef.current = report;
+
+  const saveOnStop = useCallback(() => {
+    const current = reportRef.current;
+    if (!current || current.quality < 0.35) return;
+    addLocalReport(current);
+    if (services.s3) {
+      void fetch("/api/sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ profileId: profile.profileId, report: current }),
+      }).catch(() => {
+        // The local copy already succeeded; the mirror is a convenience.
+      });
+    }
+    setSaved(true);
+  }, [profile.profileId, services.s3]);
+
   const hint = !running
     ? null
     : tracking.faceVisible
@@ -118,6 +153,7 @@ export function VitalsAgent({ agent }: { agent: AgentDefinition }) {
             <button
               onClick={() => {
                 if (running) {
+                  saveOnStop();
                   setRunning(false);
                 } else {
                   reset();
@@ -149,6 +185,16 @@ export function VitalsAgent({ agent }: { agent: AgentDefinition }) {
                 : "Idle"}
             </span>
           </div>
+
+          {saved && !running && (
+            <p className="text-[12px]" style={{ color: "var(--good)" }}>
+              Saved to your history.{" "}
+              <a href="/history" className="underline underline-offset-2">
+                See the trend
+              </a>
+              .
+            </p>
+          )}
 
           <PulseTrace
             waveform={snapshot.waveform}

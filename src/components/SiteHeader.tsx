@@ -34,11 +34,38 @@ export function Wordmark({ className = "" }: { className?: string }) {
   );
 }
 
+const NAV = [
+  { href: "/", label: "Checks" },
+  { href: "/appointments", label: "Appointments" },
+  { href: "/history", label: "History" },
+];
+
+/**
+ * The header navigation.
+ *
+ * Deliberately three items. Everything this does falls into one of three
+ * questions — what can I measure, when am I next doing it, and what has it
+ * said before — and a fourth entry would mean one of them was not really a
+ * top-level thing.
+ */
 export function SiteHeader({ children }: { children?: React.ReactNode }) {
   return (
     <header className="sticky top-0 z-40 border-b border-[var(--border)] bg-[#07090dcc] backdrop-blur-xl">
-      <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-5">
-        <Wordmark />
+      <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-4 px-5">
+        <div className="flex items-center gap-6">
+          <Wordmark />
+          <nav className="hidden items-center gap-5 sm:flex">
+            {NAV.map((item) => (
+              <Link
+                key={item.href}
+                href={item.href}
+                className="text-[12.5px] text-[var(--muted)] transition-colors hover:text-[var(--foreground)]"
+              >
+                {item.label}
+              </Link>
+            ))}
+          </nav>
+        </div>
         <div className="flex items-center gap-3">{children}</div>
       </div>
     </header>
