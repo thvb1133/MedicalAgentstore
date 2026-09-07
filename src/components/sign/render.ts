@@ -72,10 +72,19 @@ export function drawHand(
   origin: Joint,
   accent: string,
   tone: SkinTone = DEFAULT_TONE,
+  /**
+   * Draw the mirror image, for the signer's non-dominant hand.
+   *
+   * The model is a right hand. A left hand is the same model flipped, and
+   * combined with the palm facing it gives the four orientations a
+   * two-handed sign needs.
+   */
+  leftHand = false,
 ) {
-  // Showing the back of the hand mirrors the drawing, which is what actually
-  // happens when a signer turns their wrist over.
-  const mirrored = geometry.facing === "back";
+  // Showing the back of the hand also mirrors the drawing, which is what
+  // actually happens when a signer turns their wrist over. Two mirrors cancel,
+  // which is exactly right for a left hand seen palm-away.
+  const mirrored = (geometry.facing === "back") !== leftHand;
   const anchor = {
     x: origin.x + geometry.anchorOffset.x * scale,
     y: origin.y + geometry.anchorOffset.y * scale,

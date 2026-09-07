@@ -8,6 +8,7 @@ import { CaptionBar } from "@/components/CaptionBar";
 import { CompanionSettings } from "@/components/avatar/CompanionSettings";
 import { PortraitPresence } from "@/components/avatar/PortraitPresence";
 import { SignAvatar } from "@/components/sign/SignAvatar";
+import { SigningAvatar } from "@/components/sign/SigningAvatar";
 import { SKIN_TONES } from "@/components/sign/render";
 import { usePortrait } from "@/hooks/usePortrait";
 import { spellableTerms } from "@/lib/sign/schedule";
@@ -211,8 +212,8 @@ export function CompanionAgent({ agent }: { agent: AgentDefinition }) {
   }, [conversation.turns]);
 
   const spelled = useMemo(
-    () => (profile.fingerspelling ? spellableTerms(lastAssistantText).join(" ") : ""),
-    [profile.fingerspelling, lastAssistantText],
+    () => (profile.signMode === "spell" ? spellableTerms(lastAssistantText).join(" ") : ""),
+    [profile.signMode, lastAssistantText],
   );
 
   const signTone =
@@ -359,16 +360,29 @@ export function CompanionAgent({ agent }: { agent: AgentDefinition }) {
           />
 
           {/*
-            Only the numbers and names get spelled, not the whole reply.
+            Two ways to sign, because they do different jobs.
 
-            Fingerspelling a full sentence at two letters a second is slower
-            than reading the caption that is already on screen, so it would be
-            a worse way to receive the same information. What it is genuinely
-            good for is the parts a caption handles worst — a measurement, a
-            drug name, a person's name — which is also what signers
-            fingerspell in ordinary conversation.
+            "Key signs" runs the full signer over the reply and falls back to
+            fingerspelling for anything with no sign, which is what a signer
+            does with names and numbers too. "Fingerspelling" skips the signs
+            and spells only the measurements and names — the parts a caption
+            handles worst — because spelling a whole sentence at two letters a
+            second is slower to read than the caption already on screen.
+
+            Either way the caption stays. Neither of these is interpretation
+            and neither should be the only way the reply is available.
           */}
-          {profile.fingerspelling && spelled && (
+          {profile.signMode === "sign" && lastAssistantText && (
+            <SigningAvatar
+              text={lastAssistantText}
+              accent={accent}
+              tone={signTone}
+              height={280}
+              loop
+            />
+          )}
+
+          {profile.signMode === "spell" && spelled && (
             <SignAvatar
               text={spelled}
               accent={accent}

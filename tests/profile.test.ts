@@ -263,3 +263,32 @@ describe("migrating a profile written before languages existed", () => {
     expect(getVoice(profile.voiceId)?.language).toBe("fr-FR");
   });
 });
+
+describe("the sign mode, which used to be a boolean", () => {
+  it("defaults to off", () => {
+    expect(defaultProfile().signMode).toBe("off");
+  });
+
+  it("keeps a stored fingerspelling preference rather than resetting it", () => {
+    // Someone who turned fingerspelling on before signs existed should find
+    // it still on, not silently cleared because the setting changed shape.
+    expect(parseProfile({ fingerspelling: true }).signMode).toBe("spell");
+    expect(parseProfile({ fingerspelling: false }).signMode).toBe("off");
+  });
+
+  it("prefers an explicit sign mode over the old boolean", () => {
+    expect(parseProfile({ signMode: "sign", fingerspelling: false }).signMode).toBe("sign");
+  });
+
+  it("rejects a mode it does not recognise", () => {
+    expect(parseProfile({ signMode: "interpret" }).signMode).toBe("off");
+  });
+
+  it("tells the assistant that signing is slow, and differently for each mode", () => {
+    const spell = personaInstructions(parseProfile({ signMode: "spell" }));
+    const sign = personaInstructions(parseProfile({ signMode: "sign" }));
+    expect(spell).toMatch(/fingerspelled/i);
+    expect(sign).toMatch(/signed on screen/i);
+    expect(personaInstructions(parseProfile({ signMode: "off" }))).not.toMatch(/signed on screen/i);
+  });
+});

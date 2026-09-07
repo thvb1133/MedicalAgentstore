@@ -103,18 +103,18 @@ export function SignStudio() {
               What this is, and what it is not
             </p>
             <p className="mt-1.5 text-[11.5px] leading-relaxed text-[var(--muted)]">
-              This is <span className="text-[var(--foreground)]">fingerspelling</span>,
-              not American Sign Language. ASL is a full language: meaning lives
-              in movement, in facial expression, in where a sign is placed, and
-              in both hands at once. A single drawn hand cannot produce any of
-              that, and calling it sign language would be a false promise of
-              access.
+              This tab is <span className="text-[var(--foreground)]">fingerspelling</span>:
+              one hand, one letter at a time. It is not signing, and it is not
+              meant to be. Signs live under the other tab, where the handshape,
+              the place on the body, the movement and the face all carry
+              meaning together.
             </p>
             <p className="mt-2 text-[11.5px] leading-relaxed text-[var(--muted)]">
               What fingerspelling genuinely carries is names, medical terms and
               numbers — exactly the things this application produces, and the
-              things Deaf signers fingerspell in ordinary conversation. So the
-              companion spells those alongside a full caption rather than
+              things Deaf signers fingerspell in ordinary conversation rather
+              than searching for a sign. So the companion spells those, and
+              spells anything the sign lexicon does not cover, instead of
               grinding out whole sentences at two letters a second.
             </p>
             <p className="mt-2 text-[11.5px] leading-relaxed text-[var(--faint)]">

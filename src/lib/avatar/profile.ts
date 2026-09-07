@@ -23,6 +23,9 @@ export type CaptionMode = "off" | "on" | "large";
 /** Whether the companion appears as an illustrated face or an abstract shape. */
 export type PresenceStyle = "portrait" | "abstract";
 
+/** Nothing signed, the manual alphabet only, or the full signer. */
+export type SignMode = "off" | "spell" | "sign";
+
 export interface CompanionProfile {
   /** What the person would like to be called. Optional and never required. */
   displayName: string;
@@ -56,12 +59,16 @@ export interface CompanionProfile {
   /** When false the reply is shown but never spoken. */
   speakReplies: boolean;
   /**
-   * Show a hand fingerspelling the numbers and names out of each reply,
-   * alongside the caption. Off by default: it is useful to a specific group
-   * of people and clutter to everyone else.
+   * What, if anything, is signed on screen alongside the caption.
+   *
+   * Off by default: it is useful to a specific group of people and clutter to
+   * everyone else. "spell" is the hand alone, fingerspelling the numbers and
+   * names out of a reply. "sign" is the full signer — two hands, placed on
+   * the body, with facial markers — falling back to fingerspelling for
+   * anything with no sign.
    */
-  fingerspelling: boolean;
-  /** Which skin tone the drawn hand uses. */
+  signMode: SignMode;
+  /** Which skin tone the drawn hands use. */
   signTone: string;
   /**
    * Pseudonymous id used to file measurement history. Generated locally,
@@ -75,6 +82,7 @@ const STORAGE_KEY = "sanjivani-setu.companion-profile.v1";
 const AGE_BANDS: AgeBand[] = ["child", "teen", "adult", "older"];
 const CAPTION_MODES: CaptionMode[] = ["off", "on", "large"];
 const SIGN_TONES = ["light", "medium", "tan", "deep"];
+const SIGN_MODES: SignMode[] = ["off", "spell", "sign"];
 const PRESENCE_STYLES: PresenceStyle[] = ["portrait", "abstract"];
 
 /** Constrained to what the history route will accept as a key segment. */
@@ -102,7 +110,7 @@ export function defaultProfile(): CompanionProfile {
     accessMode: false,
     simpleLanguage: false,
     speakReplies: true,
-    fingerspelling: false,
+    signMode: "off",
     signTone: "medium",
     profileId: generateProfileId(),
   };
@@ -180,7 +188,7 @@ export function parseProfile(raw: unknown): CompanionProfile {
     accessMode,
     simpleLanguage: asBoolean(p.simpleLanguage, base.simpleLanguage),
     speakReplies: asBoolean(p.speakReplies, base.speakReplies),
-    fingerspelling: asBoolean(p.fingerspelling, base.fingerspelling),
+    signMode: readSignMode(p, base.signMode),
     signTone: SIGN_TONES.includes(asString(p.signTone, "")) ? (p.signTone as string) : base.signTone,
     profileId,
   };
@@ -218,6 +226,19 @@ export function saveProfile(profile: CompanionProfile): CompanionProfile {
  * change what the assistant is permitted to say, and the ordering in the
  * prompt is what enforces that.
  */
+/**
+ * Read the sign mode, honouring the boolean this setting used to be.
+ *
+ * Someone who turned fingerspelling on before signs existed should find it
+ * still on, not silently reset because the shape of the setting changed
+ * underneath them.
+ */
+function readSignMode(p: Record<string, unknown>, fallback: SignMode): SignMode {
+  if (SIGN_MODES.includes(p.signMode as SignMode)) return p.signMode as SignMode;
+  if (typeof p.fingerspelling === "boolean") return p.fingerspelling ? "spell" : "off";
+  return fallback;
+}
+
 export function personaInstructions(profile: CompanionProfile): string {
   const avatar = avatarOr(profile.avatarId);
   const lines: string[] = [`You are speaking as "${avatar.name}". ${avatar.persona}`];
@@ -244,9 +265,13 @@ export function personaInstructions(profile: CompanionProfile): string {
     );
   }
 
-  if (profile.fingerspelling) {
+  if (profile.signMode === "spell") {
     lines.push(
       "Numbers and names in your reply are also being fingerspelled on screen, one letter at a time, which is slow. Say each measurement once, as digits with its unit, rather than repeating it in words.",
+    );
+  } else if (profile.signMode === "sign") {
+    lines.push(
+      "Your reply is also being signed on screen by an avatar with a small lexicon of common signs, and anything without a sign is fingerspelled letter by letter, which is slow. Keep sentences short and concrete, prefer everyday words over clinical ones, and state each measurement once as digits with its unit.",
     );
   }
 

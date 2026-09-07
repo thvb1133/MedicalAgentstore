@@ -428,27 +428,48 @@ export function CompanionSettings({
             </div>
 
             {/*
-              Fingerspelling is offered as what it is and nothing more.
+              Signing is offered as exactly what it is and nothing more.
 
-              A signing avatar is a linguistics problem, not a rendering one:
-              BSL, ASL and ISL are separate languages whose grammar lives in
-              facial expression, body shift and the space in front of the
-              signer as much as in the hands. That is not built without Deaf
-              signers in the room. The manual alphabet is a different and much
-              smaller thing, it is genuinely what signers use for names,
-              numbers and medical terms, and it can be done properly — so it
-              is here, under its own name.
+              The signs here are real, but stringing them together from an
+              English sentence is not ASL: ASL orders a sentence topic-first,
+              moves verbs through space, and carries grammar on the face. So
+              the choice below is worded as "key signs", the caption stays on
+              underneath, and the page linked at the bottom lists every sign
+              with a written description so a signer can check it.
             */}
             <div className="mt-3 rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] p-3">
-              <Toggle
-                label="Fingerspell numbers and names"
-                detail="A drawn hand spells the measurements and names out of each reply, next to the caption."
-                checked={profile.fingerspelling}
-                onChange={(v) => set({ fingerspelling: v })}
-                accent={avatar.palette.core}
-              />
+              <div className="mb-1.5 text-[12px] text-[var(--muted)]">On-screen signing</div>
+              <div className="grid gap-2 sm:grid-cols-3">
+                {(
+                  [
+                    ["off", "Off", "Caption only"],
+                    ["spell", "Fingerspelling", "A hand spells names and numbers"],
+                    ["sign", "Key signs", "A signer, spelling what has no sign"],
+                  ] as const
+                ).map(([value, label, detail]) => (
+                  <button
+                    key={value}
+                    onClick={() => set({ signMode: value })}
+                    aria-pressed={profile.signMode === value}
+                    className="rounded-lg border px-3 py-2 text-left transition-colors"
+                    style={{
+                      borderColor:
+                        profile.signMode === value ? avatar.palette.core : "var(--border)",
+                      background:
+                        profile.signMode === value ? "var(--surface)" : "transparent",
+                    }}
+                  >
+                    <span className="block text-[12.5px] font-medium text-[var(--foreground)]">
+                      {label}
+                    </span>
+                    <span className="block text-[11px] leading-snug text-[var(--faint)]">
+                      {detail}
+                    </span>
+                  </button>
+                ))}
+              </div>
 
-              {profile.fingerspelling && (
+              {profile.signMode !== "off" && (
                 <div className="mt-3 flex items-center gap-3 border-t border-[var(--border)] pt-3">
                   <span className="text-[11.5px] text-[var(--muted)]">Skin tone</span>
                   {SKIN_TONES.map((option) => (
@@ -469,15 +490,15 @@ export function CompanionSettings({
               )}
 
               <p className="mt-3 border-t border-[var(--border)] pt-3 text-[11.5px] leading-relaxed text-[var(--muted)]">
-                This is the ASL manual alphabet, not sign language. ASL, BSL
-                and ISL are full languages whose grammar lives in movement,
-                facial expression and the space in front of the signer, and a
-                single drawn hand cannot produce any of it — calling this
-                signing would be a promise of access we could not keep. What
-                fingerspelling genuinely carries is names, numbers and medical
-                terms, which is what it is used for here.{" "}
+                The signs are real ASL signs, made where they belong on the
+                body and moving the way they move. Putting them in English word
+                order is <span className="text-[var(--foreground)]">not</span>{" "}
+                ASL, which has its own grammar and carries much of it on the
+                face — so this runs as key signs beside the full caption rather
+                than as interpretation, and it was built without a Deaf signer
+                in the room.{" "}
                 <a href="/sign" className="underline underline-offset-2 hover:text-[var(--foreground)]">
-                  See the full alphabet
+                  See every sign and how it is made
                 </a>
                 .
               </p>
