@@ -40,6 +40,13 @@ export interface ConversationOptions {
   speechEnabled: boolean;
   /** Voice for the spoken reply. */
   voiceId?: string;
+  /** Speaking rate as a percentage of normal. */
+  speechRate?: number;
+  /**
+   * Manner-of-speaking instructions from the chosen avatar and the person's
+   * accessibility settings. Appended below the safety rules, never above.
+   */
+  persona?: string;
 }
 
 export interface ConversationState {
@@ -101,7 +108,12 @@ function getConstructor(): RecognitionCtor | null {
 }
 
 export function useConversation(options: ConversationOptions): ConversationState {
-  const { getContext, speechEnabled, voiceId } = options;
+  const { getContext, speechEnabled, voiceId, speechRate = 100, persona } = options;
+
+  // Read at submission time so changing the avatar mid-conversation takes
+  // effect on the next turn rather than being captured when the loop started.
+  const personaRef = useRef(persona);
+  personaRef.current = persona;
 
   const [status, setStatus] = useState<ConversationStatus>("idle");
   const [turns, setTurns] = useState<ConversationTurn[]>([]);
@@ -226,7 +238,7 @@ export function useConversation(options: ConversationOptions): ConversationState
       const response = await fetch("/api/speak", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text, voice: voiceId }),
+        body: JSON.stringify({ text, voice: voiceId, rate: speechRate }),
       });
       if (!response.ok) throw new Error("Speech synthesis failed.");
 
@@ -244,7 +256,7 @@ export function useConversation(options: ConversationOptions): ConversationState
       URL.revokeObjectURL(url);
       audioRef.current = null;
     },
-    [speechEnabled, voiceId],
+    [speechEnabled, voiceId, speechRate],
   );
 
   const submit = useCallback(
@@ -268,7 +280,11 @@ export function useConversation(options: ConversationOptions): ConversationState
         const response = await fetch("/api/converse", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ messages: nextTurns, context: getContextRef.current() }),
+          body: JSON.stringify({
+            messages: nextTurns,
+            context: getContextRef.current(),
+            persona: personaRef.current,
+          }),
           signal: controller.signal,
         });
 

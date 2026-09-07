@@ -4,30 +4,46 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { AvatarPresence } from "@/components/AvatarPresence";
 import { CameraStage } from "@/components/CameraStage";
+import { CaptionBar } from "@/components/CaptionBar";
+import { CompanionSettings } from "@/components/avatar/CompanionSettings";
 import { MetricTile } from "@/components/MetricTile";
 import { QualityMeter } from "@/components/QualityMeter";
 import { SafetyNotice } from "@/components/SafetyNotice";
 import { VoicePanel } from "@/components/VoicePanel";
 import { useCamera } from "@/hooks/useCamera";
+import { useCompanionProfile } from "@/hooks/useCompanionProfile";
 import { useConversation } from "@/hooks/useConversation";
 import { useFaceTracking, type FaceFrame } from "@/hooks/useFaceTracking";
 import { useServices } from "@/hooks/useServices";
 import { useVitals } from "@/hooks/useVitals";
 import { useVoiceBiomarkers } from "@/hooks/useVoiceBiomarkers";
 import type { AgentDefinition } from "@/lib/agents/registry";
+import { avatarOr } from "@/lib/avatar/presets";
+import { personaInstructions } from "@/lib/avatar/profile";
 import type { LiveContext } from "@/lib/conversation";
+import { addLocalReport } from "@/lib/history";
+import type { MeasurementReport } from "@/lib/report";
 import type { VoiceAnalysis } from "@/lib/voice/engine";
 
 const WINDOW_SECONDS = 30;
 
+/** Below this there is nothing worth filing, and a bad row pollutes the trend. */
+const MIN_SAVEABLE_QUALITY = 0.35;
+
 export function CompanionAgent({ agent }: { agent: AgentDefinition }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const transcriptRef = useRef<HTMLDivElement>(null);
+  const typedInputRef = useRef<HTMLInputElement>(null);
   const [running, setRunning] = useState(false);
   const [typed, setTyped] = useState("");
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [saved, setSaved] = useState(false);
   const startedAtRef = useRef<number>(0);
 
   const { services, loaded: servicesLoaded } = useServices();
+  const { profile, update: updateProfile, ready: profileReady } = useCompanionProfile();
+  const avatar = avatarOr(profile.avatarId);
+  const accent = avatar.palette.core;
 
   const camera = useCamera(videoRef, running, { idealFps: 30 });
   const { snapshot, pushFrame, reset: resetVitals } = useVitals({
@@ -89,7 +105,10 @@ export function CompanionAgent({ agent }: { agent: AgentDefinition }) {
 
   const conversation = useConversation({
     getContext,
-    speechEnabled: services.polly,
+    speechEnabled: services.polly && profile.speakReplies,
+    voiceId: profile.voiceId,
+    speechRate: profile.speechRate,
+    persona: personaInstructions(profile),
   });
 
   const { onTurnEnd, status: conversationStatus } = conversation;
@@ -107,16 +126,67 @@ export function CompanionAgent({ agent }: { agent: AgentDefinition }) {
   const start = useCallback(async () => {
     startedAtRef.current = performance.now();
     resetVitals();
+    setSaved(false);
     setRunning(true);
     await voice.start();
     conversation.start();
-  }, [conversation, resetVitals, voice]);
+    if (profile.accessMode) typedInputRef.current?.focus();
+  }, [conversation, profile.accessMode, resetVitals, voice]);
 
+  /**
+   * Ending the session files what was measured.
+   *
+   * The report is written on the way out rather than continuously, because a
+   * conversation's vitals only settle after the first half-minute and saving
+   * every intermediate estimate would fill the history with the noisy early
+   * part of every session. A measurement too poor to mean anything is not
+   * saved at all — it would sit in the trend as a data point implying it was
+   * a reading.
+   */
   const stop = useCallback(() => {
+    const v = vitalsRef.current;
+    const a = voiceRef.current;
+
+    if (v.quality.score >= MIN_SAVEABLE_QUALITY && v.heartRateBpm !== null) {
+      const report: MeasurementReport = {
+        agentSlug: agent.slug,
+        agentName: agent.name,
+        takenAt: new Date().toISOString(),
+        durationSeconds: Math.round(v.elapsedSeconds),
+        quality: v.quality.score,
+        qualityNote: v.quality.limiting,
+        metrics: [
+          { label: "Heart rate", value: v.heartRateBpm, unit: "bpm" },
+          { label: "Breathing rate", value: v.breathingRateBpm, unit: "/min" },
+          { label: "HRV (SDNN)", value: v.hrv.sdnn, unit: "ms" },
+          { label: "Stress index", value: v.stressIndex, unit: "/100" },
+          {
+            label: "Voice pitch",
+            value: a?.medianF0Hz ?? null,
+            unit: "Hz",
+            confidence: a?.quality,
+            note: a ? undefined : "No voice was measured.",
+          },
+        ],
+      };
+      addLocalReport(report);
+      if (services.s3) {
+        void fetch("/api/sessions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ profileId: profile.profileId, report }),
+        }).catch(() => {
+          // The local copy already succeeded; a failed sync is not worth
+          // interrupting the end of a session for.
+        });
+      }
+      setSaved(true);
+    }
+
     conversation.stop();
     voice.stop();
     setRunning(false);
-  }, [conversation, voice]);
+  }, [agent.name, agent.slug, conversation, profile.profileId, services.s3, voice]);
 
   // Keep the newest turn in view without yanking the page around.
   useEffect(() => {
@@ -126,6 +196,13 @@ export function CompanionAgent({ agent }: { agent: AgentDefinition }) {
   }, [conversation.turns, conversation.partial, conversation.interim]);
 
   const visibleTurns = useMemo(() => conversation.turns.slice(-12), [conversation.turns]);
+
+  const lastAssistantText = useMemo(() => {
+    for (let i = conversation.turns.length - 1; i >= 0; i--) {
+      if (conversation.turns[i].role === "assistant") return conversation.turns[i].text;
+    }
+    return "";
+  }, [conversation.turns]);
 
   const claudeMissing = servicesLoaded && !services.claude;
   const pollyMissing = servicesLoaded && !services.polly;
@@ -149,9 +226,19 @@ export function CompanionAgent({ agent }: { agent: AgentDefinition }) {
         </div>
       )}
 
+      {settingsOpen && (
+        <CompanionSettings
+          profile={profile}
+          onChange={updateProfile}
+          onClose={() => setSettingsOpen(false)}
+          speechAvailable={services.polly}
+        />
+      )}
+
       <div className="grid gap-4 lg:grid-cols-[300px_1fr_310px]">
         <div className="space-y-4">
           <AvatarPresence
+            avatar={avatar}
             status={conversation.status}
             level={voice.level}
             heartRateBpm={snapshot.heartRateBpm}
@@ -162,12 +249,19 @@ export function CompanionAgent({ agent }: { agent: AgentDefinition }) {
               onClick={() => (running ? stop() : void start())}
               className="rounded-lg px-4 py-2 text-[13px] font-semibold transition-colors"
               style={{
-                background: running ? "var(--surface-raised)" : agent.accent,
+                background: running ? "var(--surface-raised)" : accent,
                 color: running ? "var(--foreground)" : "#141414",
                 border: running ? "1px solid var(--border)" : "1px solid transparent",
               }}
             >
-              {running ? "End session" : "Start conversation"}
+              {running ? "End session" : `Talk to ${avatar.name}`}
+            </button>
+
+            <button
+              onClick={() => setSettingsOpen(true)}
+              className="rounded-lg border border-[var(--border)] px-3 py-2 text-[12px] text-[var(--muted)] transition-colors hover:text-[var(--foreground)]"
+            >
+              Change avatar
             </button>
 
             {conversation.status === "speaking" && (
@@ -179,6 +273,23 @@ export function CompanionAgent({ agent }: { agent: AgentDefinition }) {
               </button>
             )}
           </div>
+
+          {profileReady && !running && (
+            <p className="text-[11.5px] leading-relaxed text-[var(--faint)]">
+              {avatar.tagline} Speaking as {profile.voiceId}
+              {profile.speechRate !== 100 ? ` at ${profile.speechRate}% speed` : ""}.
+            </p>
+          )}
+
+          {saved && !running && (
+            <p className="text-[12px] leading-relaxed" style={{ color: "var(--good)" }}>
+              Saved to your history.{" "}
+              <a href="/history" className="underline underline-offset-2">
+                See the trend
+              </a>
+              .
+            </p>
+          )}
 
           <CameraStage
             videoRef={videoRef}
@@ -206,7 +317,21 @@ export function CompanionAgent({ agent }: { agent: AgentDefinition }) {
           )}
         </div>
 
-        <div className="panel flex min-h-[520px] flex-col p-4">
+        <div className="flex min-h-[520px] flex-col gap-4">
+          {/*
+            In access mode the captions are not a convenience track alongside
+            the audio — they are the entire output — so they sit above the
+            transcript rather than under it.
+          */}
+          <CaptionBar
+            mode={profile.captions}
+            status={conversation.status}
+            speakerName={avatar.name}
+            text={conversation.partial || lastAssistantText}
+            accent={accent}
+          />
+
+          <div className="panel flex flex-1 flex-col p-4">
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-medium uppercase tracking-[0.14em] text-[var(--faint)]">
               Conversation
@@ -241,7 +366,7 @@ export function CompanionAgent({ agent }: { agent: AgentDefinition }) {
                   style={
                     turn.role === "user"
                       ? { background: "var(--surface-raised)", color: "var(--foreground)" }
-                      : { background: `${agent.accent}14`, color: "var(--foreground)" }
+                      : { background: `${accent}14`, color: "var(--foreground)" }
                   }
                 >
                   {turn.text}
@@ -253,7 +378,7 @@ export function CompanionAgent({ agent }: { agent: AgentDefinition }) {
               <div className="flex justify-start">
                 <div
                   className="max-w-[85%] rounded-xl px-3.5 py-2.5 text-[13px] leading-relaxed"
-                  style={{ background: `${agent.accent}14`, color: "var(--foreground)" }}
+                  style={{ background: `${accent}14`, color: "var(--foreground)" }}
                 >
                   {conversation.partial}
                 </div>
@@ -301,15 +426,20 @@ export function CompanionAgent({ agent }: { agent: AgentDefinition }) {
             }}
           >
             <input
+              ref={typedInputRef}
               value={typed}
               onChange={(e) => setTyped(e.target.value)}
               placeholder={
-                !conversation.recognitionAvailable || conversation.recognitionBlocked
-                  ? "This browser cannot listen — type here"
-                  : "Or type instead of speaking"
+                profile.accessMode
+                  ? "Type what you want to say"
+                  : !conversation.recognitionAvailable || conversation.recognitionBlocked
+                    ? "This browser cannot listen — type here"
+                    : "Or type instead of speaking"
               }
               disabled={claudeMissing}
-              className="flex-1 rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] px-3 py-2 text-[13px] text-[var(--foreground)] outline-none placeholder:text-[var(--faint)] focus:border-[var(--border-strong)] disabled:opacity-40"
+              className={`flex-1 rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] px-3 py-2 text-[var(--foreground)] outline-none placeholder:text-[var(--faint)] focus:border-[var(--border-strong)] disabled:opacity-40 ${
+                profile.accessMode ? "text-[16px]" : "text-[13px]"
+              }`}
             />
             <button
               type="submit"
@@ -319,6 +449,7 @@ export function CompanionAgent({ agent }: { agent: AgentDefinition }) {
               Send
             </button>
           </form>
+          </div>
         </div>
 
         <div className="space-y-4">
@@ -327,7 +458,7 @@ export function CompanionAgent({ agent }: { agent: AgentDefinition }) {
               label="Heart rate"
               value={snapshot.heartRateBpm}
               unit="bpm"
-              accent={agent.accent}
+              accent={accent}
               beat
               detail="From skin colour"
               pending={running ? "Building signal…" : "Not started"}

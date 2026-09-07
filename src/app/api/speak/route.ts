@@ -9,6 +9,23 @@ export const runtime = "nodejs";
 const MAX_CHARS = 3000;
 
 /**
+ * Escape text before it goes inside an SSML document.
+ *
+ * Claude's replies are plain prose, but they routinely contain an ampersand or
+ * an angle bracket, and either one turns a valid SSML document into a parse
+ * error and a 400 from Polly. Escaping is also what stops a reply that happens
+ * to contain markup from being interpreted as SSML tags.
+ */
+function escapeSsml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
+/**
  * Amazon Polly text-to-speech.
  *
  * Neural voices are used because the standard ones read numbers with an
@@ -26,10 +43,12 @@ export async function POST(req: NextRequest) {
 
   let text: string;
   let voice: string;
+  let rate: number;
   try {
-    const body = (await req.json()) as { text?: string; voice?: string };
+    const body = (await req.json()) as { text?: string; voice?: string; rate?: number };
     text = (body.text ?? "").trim();
     voice = body.voice || config.pollyVoice;
+    rate = typeof body.rate === "number" ? body.rate : 100;
   } catch {
     return Response.json({ error: "Malformed request body." }, { status: 400 });
   }
@@ -39,12 +58,19 @@ export async function POST(req: NextRequest) {
   }
   if (text.length > MAX_CHARS) text = `${text.slice(0, MAX_CHARS)}…`;
 
+  // Bounded here as well as in the client, because this endpoint is reachable
+  // on its own and a prosody rate of 5% would produce minutes of audio from a
+  // single sentence.
+  rate = Math.min(125, Math.max(60, Math.round(rate)));
+
   const polly = new PollyClient(awsCredentials());
 
   try {
+    const useSsml = rate !== 100;
     const result = await polly.send(
       new SynthesizeSpeechCommand({
-        Text: text,
+        Text: useSsml ? `<speak><prosody rate="${rate}%">${escapeSsml(text)}</prosody></speak>` : text,
+        TextType: useSsml ? "ssml" : "text",
         OutputFormat: "mp3",
         VoiceId: voice as never,
         Engine: "neural",
