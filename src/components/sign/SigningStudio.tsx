@@ -16,7 +16,19 @@ import { SKIN_TONES } from "./render";
  * avatar against what they know rather than taking it on trust.
  */
 
+/*
+ * The first three are a minimal triple.
+ *
+ * Same words, three grammars: a statement, a yes/no question and a
+ * wh-question. Only the face changes between them, which is the whole point
+ * — in ASL the brows are doing the work that a question mark and word order
+ * do in English. Put side by side as one-click examples, the contrast is
+ * visible in about ten seconds without anyone having to type.
+ */
 const EXAMPLES = [
+  "You feel tired.",
+  "Do you feel tired?",
+  "How do you feel?",
   "Hello. How do you feel now?",
   "Your heart rate is 72.",
   "Breathe slowly with me.",
@@ -25,7 +37,7 @@ const EXAMPLES = [
 ];
 
 export function SigningStudio() {
-  const [text, setText] = useState(EXAMPLES[0]);
+  const [text, setText] = useState("Hello. How do you feel now?");
   const [speed, setSpeed] = useState(1);
   const [toneId, setToneId] = useState(SKIN_TONES[1].id);
   const [spellUnknown, setSpellUnknown] = useState(false);
@@ -58,6 +70,11 @@ export function SigningStudio() {
               rows={2}
               className="mt-2 w-full resize-none rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] px-3 py-2.5 text-[15px] text-[var(--foreground)] outline-none focus:border-[var(--border-strong)]"
             />
+            <span className="mt-1.5 block text-[11px] text-[var(--faint)]">
+              The first three are the same words in three grammars. Only the
+              face changes between them, which is where ASL keeps the
+              difference between a statement and a question.
+            </span>
             <span className="mt-2 flex flex-wrap gap-1.5">
               {EXAMPLES.map((example) => (
                 <button
