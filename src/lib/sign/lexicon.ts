@@ -311,13 +311,13 @@ export const LEXICON: Sign[] = [
     frames: [
       {
         t: 0,
-        right: hand("MIDDLE", at("forehead", -0.02, 0.14)),
+        right: hand("MIDDLE", at("forehead", -0.13, 0.14)),
         left: hand("MIDDLE", at("stomach", 0.06, -0.06)),
         face: CONCERNED,
       },
       {
         t: 1,
-        right: hand("MIDDLE", at("forehead", -0.02, 0.06)),
+        right: hand("MIDDLE", at("forehead", -0.13, 0.06)),
         left: hand("MIDDLE", at("stomach", 0.06, -0.14)),
         face: CONCERNED,
       },
@@ -502,10 +502,10 @@ export const LEXICON: Sign[] = [
     description:
       "The open hand draws down in front of the face, closing to a flattened O as the head tilts and the eyes close.",
     frames: [
-      { t: 0, right: hand("FIVE", at("forehead", -0.02, 0.1), { facing: "back" }), left: null },
+      { t: 0, right: hand("FIVE", at("forehead", -0.12, 0.1), { facing: "back" }), left: null },
       {
         t: 1,
-        right: hand("FLAT_O", at("chin", -0.02, 0.02), { facing: "back" }),
+        right: hand("FLAT_O", at("chin", -0.1, 0.02), { facing: "back" }),
         left: null,
         face: face({ squint: 1, headNod: 0.4, headTurn: 0.2 }),
       },

@@ -27,15 +27,22 @@ export interface Point {
 export const HEAD_CENTER: Point = { x: 0, y: -1.02 };
 export const HEAD_RADIUS = 0.31;
 
-export const SHOULDER_RIGHT: Point = { x: -0.5, y: -0.44 };
-export const SHOULDER_LEFT: Point = { x: 0.5, y: -0.44 };
+export const SHOULDER_RIGHT: Point = { x: -0.44, y: -0.44 };
+export const SHOULDER_LEFT: Point = { x: 0.44, y: -0.44 };
 
 /** Upper arm and forearm, in body units. Together they bound the reach. */
-export const UPPER_ARM = 0.62;
-export const FOREARM = 0.6;
+export const UPPER_ARM = 0.56;
+export const FOREARM = 0.53;
 
-/** A hand is half a body unit long, which puts it at roughly head height. */
-export const HAND_SCALE = 0.5;
+/**
+ * Hand length in body units.
+ *
+ * A real hand is about four fifths the height of a face, which with a head
+ * radius of 0.31 puts it near 0.5. Drawn slightly under that, because this
+ * hand model has chunkier digits than a real one and reads as oversized at
+ * its true proportion.
+ */
+export const HAND_SCALE = 0.43;
 
 /**
  * Named locations in signing space.
@@ -68,8 +75,8 @@ export const ANCHORS = {
   neutralHigh: { x: 0, y: -0.3 },
   neutralLow: { x: 0, y: 0.26 },
   /** Where the hands hang when nothing is being signed. */
-  restRight: { x: -0.52, y: 0.66 },
-  restLeft: { x: 0.52, y: 0.66 },
+  restRight: { x: -0.5, y: 0.56 },
+  restLeft: { x: 0.5, y: 0.56 },
 } as const;
 
 export type AnchorName = keyof typeof ANCHORS;
@@ -126,12 +133,29 @@ export function solveArm(shoulder: Point, wrist: Point, side: "right" | "left"):
   const h = Math.sqrt(Math.max(0, UPPER_ARM * UPPER_ARM - a * a));
 
   const mid = { x: shoulder.x + unit.x * a, y: shoulder.y + unit.y * a };
-  // Perpendicular, pointing away from the midline and downward on each side.
-  const sign = side === "right" ? 1 : -1;
-  const elbow = {
-    x: mid.x + sign * -unit.y * h,
-    y: mid.y + sign * unit.x * h,
-  };
+  const perpendicular = { x: -unit.y * h, y: unit.x * h };
+
+  /*
+   * Two elbows solve every reachable target; only one is what a person does.
+   *
+   * The dominant rule is that elbows hang. Reaching for the forehead, the
+   * elbow drops toward the ribs — it does not swing up level with the ear,
+   * and it certainly does not fold in behind the chest, which is what
+   * picking a fixed side of the line produces for any target above the
+   * shoulder.
+   *
+   * Height alone is ambiguous when the arm points straight up or straight
+   * down, because then both solutions sit at the same height. So outward
+   * distance from the midline breaks the tie, which is the other thing
+   * elbows do: they stay clear of the torso.
+   */
+  const candidates = [
+    { x: mid.x + perpendicular.x, y: mid.y + perpendicular.y },
+    { x: mid.x - perpendicular.x, y: mid.y - perpendicular.y },
+  ];
+  const outward = (p: Point) => (side === "right" ? -p.x : p.x);
+  const score = (p: Point) => p.y + 0.3 * outward(p);
+  const elbow = score(candidates[0]) >= score(candidates[1]) ? candidates[0] : candidates[1];
 
   return { shoulder, elbow, wrist: effectiveWrist, strained };
 }

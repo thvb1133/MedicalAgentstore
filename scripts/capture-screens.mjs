@@ -39,7 +39,10 @@ const SHOTS = [
     start: "Change avatar",
     startWait: 2000,
   },
-  { path: "/sign", name: "fingerspelling", wait: 2500 },
+  // Not full-page: resizing the viewport for a full-page capture clears the
+  // canvas backing store, and the signer comes out blank.
+  { path: "/sign", name: "signing", wait: 3000, height: 1250 },
+  { path: "/sign", name: "fingerspelling", wait: 2500, tab: 1 },
   { path: "/appointments", name: "appointments", wait: 1500, seed: "appointments" },
   { path: "/history", name: "history", wait: 2000, seed: "history" },
   // The home page again in the light theme, since both are real palettes
@@ -202,9 +205,24 @@ async function main() {
         }, shot.start);
         await new Promise((r) => setTimeout(r, shot.startWait ?? 8000));
       }
+      if (shot.tab !== undefined) {
+        await page.evaluate((index) => {
+          [...document.querySelectorAll('[role="tab"]')][index]?.click();
+        }, shot.tab);
+        await new Promise((r) => setTimeout(r, 1200));
+      }
+      await page.setViewport({
+        width: 1400,
+        height: shot.height ?? 1000,
+        deviceScaleFactor: 2,
+      });
+      if (shot.height) await new Promise((r) => setTimeout(r, 600));
       await new Promise((r) => setTimeout(r, shot.wait));
       const file = `${OUT}/${shot.name}.png`;
-      await page.screenshot({ path: file, fullPage: shot.path === "/" || shot.path === "/sign" });
+      await page.screenshot({
+        path: file,
+        fullPage: shot.height === undefined && (shot.path === "/" || shot.path === "/sign"),
+      });
       console.log(`  wrote ${file}`);
     }
   } finally {

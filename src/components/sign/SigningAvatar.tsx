@@ -33,8 +33,27 @@ export interface SigningAvatarProps {
   loop?: boolean;
   /** Fingerspell every word without a sign, rather than only names and numbers. */
   spellUnknown?: boolean;
-  /** Rendered against a dark background, which changes the garment colour. */
-  dark?: boolean;
+}
+
+/**
+ * Follow the page theme.
+ *
+ * The signer is drawn on canvas, so it cannot inherit CSS variables the way
+ * the rest of the interface does. Without this the garment keeps its
+ * night-theme colours on a white page, and the contrast that makes a hand
+ * over the chest readable is exactly what gets lost.
+ */
+function useDarkTheme(): boolean {
+  const [dark, setDark] = useState(true);
+  useEffect(() => {
+    const root = document.documentElement;
+    const read = () => setDark(root.getAttribute("data-theme") !== "morning");
+    read();
+    const observer = new MutationObserver(read);
+    observer.observe(root, { attributes: true, attributeFilter: ["data-theme"] });
+    return () => observer.disconnect();
+  }, []);
+  return dark;
 }
 
 export function SigningAvatar({
@@ -46,8 +65,8 @@ export function SigningAvatar({
   tone = DEFAULT_TONE,
   loop = false,
   spellUnknown = false,
-  dark = true,
 }: SigningAvatarProps) {
+  const dark = useDarkTheme();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [active, setActive] = useState<{ index: number; letter: string | null }>({
     index: -1,

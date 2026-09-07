@@ -40,7 +40,7 @@ const NAV = [
   { href: "/", label: "Checks" },
   { href: "/appointments", label: "Appointments" },
   { href: "/history", label: "History" },
-  { href: "/sign", label: "Fingerspelling" },
+  { href: "/sign", label: "Sign language" },
 ];
 export function SiteHeader({ children }: { children?: React.ReactNode }) {
   return (

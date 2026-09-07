@@ -323,9 +323,15 @@ async function main() {
       /हिन्दी/.test(picker?.text ?? "") && /日本語/.test(picker?.text ?? ""),
     );
     record(
-      "fingerspelling is offered as the manual alphabet, not as sign language",
-      /manual alphabet/i.test(picker?.text ?? "") &&
-        /not sign language|not American Sign Language/i.test(picker?.text ?? ""),
+      "signing is offered at three levels, off included",
+      /fingerspelling/i.test(picker?.text ?? "") &&
+        /key signs/i.test(picker?.text ?? "") &&
+        /caption only/i.test(picker?.text ?? ""),
+    );
+    record(
+      "the signing setting says it is not interpretation",
+      /real ASL signs/i.test(picker?.text ?? "") &&
+        /without a Deaf signer/i.test(picker?.text ?? ""),
     );
     record(
       "the portrait upload says the picture never leaves the device",
@@ -400,9 +406,103 @@ async function main() {
       consoleErrors.slice(0, 2).join(" | "),
     );
 
-    console.log("\nFingerspelling");
+    console.log("\nSigning");
     consoleErrors.length = 0;
     await page.goto(`${BASE}/sign`, { waitUntil: "networkidle0" });
+    await new Promise((r) => setTimeout(r, 1500));
+
+    const signing = await page.evaluate(() => {
+      const canvas = document.querySelector("canvas");
+      const ctx = canvas?.getContext("2d");
+      let painted = 0;
+      const tones = new Set();
+      if (ctx && canvas.width > 0) {
+        const { data } = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        for (let i = 0; i < data.length; i += 4) {
+          if (data[i + 3] > 8) {
+            painted++;
+            tones.add(`${data[i] >> 5},${data[i + 1] >> 5},${data[i + 2] >> 5}`);
+          }
+        }
+      }
+      return {
+        painted,
+        tones: tones.size,
+        label: canvas?.getAttribute("aria-label") ?? "",
+        tabs: [...document.querySelectorAll('[role="tab"]')].length,
+        text: document.body.innerText,
+      };
+    });
+
+    record("the signing page offers both signing and spelling", signing.tabs === 2);
+    record("a signer is drawn", signing.painted > 3000, `${signing.painted} pixels`);
+    // Skin, sleeve, torso, hair. A single tone would mean the body never drew
+    // and only the hand did.
+    record("the body, arms and hands all render", signing.tones >= 4, `${signing.tones} tones`);
+    record("the canvas describes what is being signed", /^A signer signing: .+/.test(signing.label));
+    record("the lexicon is listed for checking", /the lexicon · \d+ signs/i.test(signing.text));
+    record(
+      "the page says these are real signs but not fluent ASL",
+      /not fluent ASL/i.test(signing.text),
+    );
+    record(
+      "the page admits it was built without a Deaf signer",
+      /without a Deaf signer/i.test(signing.text),
+    );
+    record(
+      "it reports how much of the text it actually covered",
+      /\d+ signed · \d+ spelled · \d+ skipped/.test(signing.text),
+    );
+
+    // Both hands have to move, or two-handed signs are not being produced.
+    const signMoved = await page.evaluate(async () => {
+      const canvas = document.querySelector("canvas");
+      const ctx = canvas.getContext("2d");
+      // Track the horizontal spread of painted pixels: a two-handed sign
+      // changes it, a still frame does not.
+      const spread = () => {
+        const { data } = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        let min = canvas.width, max = 0, count = 0;
+        for (let i = 0; i < data.length; i += 4) {
+          if (data[i + 3] > 8) {
+            const x = (i / 4) % canvas.width;
+            if (x < min) min = x;
+            if (x > max) max = x;
+            count++;
+          }
+        }
+        return { width: max - min, count };
+      };
+      const samples = [];
+      for (let i = 0; i < 6; i++) {
+        samples.push(spread());
+        await new Promise((r) => setTimeout(r, 400));
+      }
+      return samples;
+    });
+    const spreads = signMoved.map((s) => s.width);
+    const counts = signMoved.map((s) => s.count);
+    record(
+      "the signer moves through the sequence",
+      Math.max(...counts) - Math.min(...counts) > 200,
+      `pixel count varied by ${Math.max(...counts) - Math.min(...counts)}`,
+    );
+    record(
+      "the hands reach out into signing space",
+      Math.max(...spreads) > 0,
+      `widest span ${Math.max(...spreads)}px`,
+    );
+    record(
+      "signing ran without console errors",
+      consoleErrors.length === 0,
+      consoleErrors.slice(0, 2).join(" | "),
+    );
+
+    console.log("\nFingerspelling");
+    consoleErrors.length = 0;
+    await page.evaluate(() => {
+      [...document.querySelectorAll('[role="tab"]')][1].click();
+    });
     await new Promise((r) => setTimeout(r, 1200));
 
     const sign = await page.evaluate(() => {
@@ -424,8 +524,8 @@ async function main() {
     record("the alphabet chart renders every shape", sign.total >= 37, `${sign.total} canvases`);
     record("the handshapes are actually drawn", sign.painted >= 36, `${sign.painted} painted`);
     record(
-      "the page says this is fingerspelling and not sign language",
-      /not American Sign Language/i.test(sign.text),
+      "the spelling tab distinguishes itself from signing",
+      /is not signing/i.test(sign.text),
     );
     record(
       "the approximate letters are declared",

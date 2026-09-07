@@ -31,6 +31,8 @@ export interface BodyTheme {
   tone: SkinTone;
   /** Torso and sleeves. Sits behind the hands, so it must contrast with them. */
   garment: string;
+  /** The sleeves, kept distinct from the torso so arms stay visible over it. */
+  sleeve: string;
   garmentShade: string;
   accent: string;
   ink: string;
@@ -42,7 +44,8 @@ export function bodyTheme(tone: SkinTone, accent: string, dark: boolean): BodyTh
     // A cool garment behind warm hands. The contrast is what keeps a hand
     // signing over the chest from disappearing into the chest.
     garment: dark ? "#25405c" : "#3f6d99",
-    garmentShade: dark ? "#1a2e45" : "#2f5478",
+    sleeve: dark ? "#33587c" : "#5487b6",
+    garmentShade: dark ? "#16263a" : "#2a4d70",
     accent,
     ink: dark ? "#0b1119" : "#16202c",
   };
@@ -96,8 +99,16 @@ export function drawSigner(
 
   // The non-dominant hand first: when the two overlap, the dominant hand is
   // almost always the one in front.
+  //
+  // A shadow under each, because a hand signing over the chest is skin on
+  // skin and the outline alone is not enough separation to read it quickly.
+  ctx.save();
+  ctx.shadowColor = "rgba(0,0,0,0.45)";
+  ctx.shadowBlur = unit * 0.09;
+  ctx.shadowOffsetY = unit * 0.03;
   drawSigningHand(ctx, frame, "left", leftWrist, unit, theme);
   drawSigningHand(ctx, frame, "right", rightWrist, unit, theme);
+  ctx.restore();
 
   ctx.restore();
 }
@@ -128,10 +139,10 @@ function drawTorso(
   ctx.fillStyle = theme.tone.shade;
   ctx.fill();
 
-  const left = project({ x: -0.62, y: 1.15 });
-  const right = project({ x: 0.62, y: 1.15 });
-  const shoulderL = project({ x: -0.56, y: -0.5 });
-  const shoulderR = project({ x: 0.56, y: -0.5 });
+  const left = project({ x: -0.5, y: 1.1 });
+  const right = project({ x: 0.5, y: 1.1 });
+  const shoulderL = project({ x: -0.52, y: -0.48 });
+  const shoulderR = project({ x: 0.52, y: -0.48 });
 
   ctx.beginPath();
   ctx.moveTo(shoulderL.x, shoulderL.y);
@@ -175,30 +186,48 @@ function drawArm(
   const elbow = project(arm.elbow);
   const shoulderPoint = project(arm.shoulder);
 
-  // Upper arm in the garment colour, forearm in skin — a short sleeve, which
-  // also means the forearm and the hand read as one limb.
-  ctx.beginPath();
-  ctx.moveTo(shoulderPoint.x, shoulderPoint.y);
-  ctx.lineTo(elbow.x, elbow.y);
-  ctx.strokeStyle = theme.garment;
-  ctx.lineWidth = unit * 0.2;
-  ctx.stroke();
+  const sleeve = unit * 0.132;
+  const forearm = unit * 0.1;
 
+  // Forearm first, in skin: a short sleeve, so the forearm and the hand read
+  // as one limb rather than two objects that happen to touch.
   ctx.beginPath();
   ctx.moveTo(elbow.x, elbow.y);
   ctx.lineTo(wrist.x, wrist.y);
   ctx.strokeStyle = theme.tone.base;
-  ctx.lineWidth = unit * 0.155;
+  ctx.lineWidth = forearm;
   ctx.stroke();
   ctx.strokeStyle = theme.tone.line;
+  ctx.lineWidth = Math.max(1, unit * 0.01);
+  ctx.stroke();
+
+  // Upper arm over it, so the sleeve covers the elbow join.
+  //
+  // In a shade of its own rather than the torso's. Drawn in the same colour,
+  // a sleeve lying across the chest disappears into it, and the forearm below
+  // is left looking like a bar floating in front of the body with nothing
+  // holding it up.
+  ctx.beginPath();
+  ctx.moveTo(shoulderPoint.x, shoulderPoint.y);
+  ctx.lineTo(elbow.x, elbow.y);
+  ctx.strokeStyle = theme.sleeve;
+  ctx.lineWidth = sleeve;
+  ctx.stroke();
+  ctx.strokeStyle = theme.garmentShade;
   ctx.lineWidth = Math.max(1, unit * 0.012);
   ctx.stroke();
 
-  // A shoulder cap, to hide the join.
-  ctx.beginPath();
-  ctx.arc(shoulderPoint.x, shoulderPoint.y, unit * 0.115, 0, Math.PI * 2);
-  ctx.fillStyle = theme.garment;
-  ctx.fill();
+  // Caps at the shoulder and the elbow. Without them the joints are two
+  // rectangles meeting at an angle, and the corner shows.
+  ctx.fillStyle = theme.sleeve;
+  for (const [point, radius] of [
+    [shoulderPoint, sleeve * 0.62],
+    [elbow, sleeve * 0.5],
+  ] as const) {
+    ctx.beginPath();
+    ctx.arc(point.x, point.y, radius, 0, Math.PI * 2);
+    ctx.fill();
+  }
 }
 
 /**

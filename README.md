@@ -51,11 +51,11 @@ npm run dev
 Open <http://localhost:3000>. Camera access requires `localhost` or HTTPS.
 
 ```bash
-npm test              # 235 tests against synthetic signals with known ground truth
+npm test              # 283 tests against synthetic signals with known ground truth
 npm run typecheck
 npm run lint
 npm run build
-npm run verify:browser  # 66 checks in a real Chrome; needs the dev server running
+npm run verify:browser  # 78 checks in a real Chrome; needs the dev server running
 ```
 
 `verify:browser` covers what the unit tests structurally cannot. It serves the
@@ -66,7 +66,7 @@ captures and the analyser reports **130 Hz** back, and that with a faceless
 video the app reports nothing rather than inventing a plausible number. It
 also drives the avatar picker, books and cancels an appointment, seeds a
 history to confirm that a low-quality reading is shown in the list but kept out
-of the trend, reads the pixels of every fingerspelled handshape to prove the
+of the trend, reads the pixels of the signer and of every fingerspelled handshape to prove the
 hand model actually draws rather than silently producing an empty canvas, and
 flips the theme to confirm the page repaints and remembers.
 
@@ -177,21 +177,41 @@ Polly's neural coverage varies by language and changes over time, so `/api/speak
 
 ---
 
-## Fingerspelling
+## Sign language
 
-The manual alphabet and the digits, drawn from a **parametric hand rig** rather than a set of pictures: a palm, five digits, three phalanges each, posed by curl and spread and then projected. Live at [`/sign`](http://localhost:3000/sign), where you can type anything and watch it spelled, with the full chart underneath to check it against.
+Two things, at [`/sign`](http://localhost:3000/sign), because signing and spelling do different jobs.
+
+### Signing
+
+A **signer**: a body, two arms, two hands and a face. Signs are written as keyframes against named places on that body — `FOREHEAD`, `CHIN`, `HEART`, `NEUTRAL` — because where a sign is made is part of what it means. SICK and FEEL are near enough the same handshape and differ by placement alone, so a floating hand cannot carry either of them.
+
+The pieces that make that work:
+
+- **Named anchors instead of coordinates.** A lexicon entry reads "flat hand, fingertips at the chin, moves forward and down", which is how a signer would describe it. Someone who knows ASL can check all 46 entries without reading a joint angle, and each carries that written description into the interface.
+- **Two-bone arm IK.** Without arms the avatar is two hands floating in front of a torso, which reads as a glitch rather than as a person. Both elbow solutions are anatomically reachable, so the one that gets used is chosen by the rule real elbows follow: they hang, and they stay clear of the torso. Picking a fixed side instead folds the elbow in behind the chest whenever a hand goes above the shoulder.
+- **Non-manual markers, as grammar.** Raised brows make a yes/no question, drawn-together brows make a wh-question, a head shake negates. These are held across the whole clause rather than pulsed on one sign, because that is their scope. A signed question with a blank face is not a neutral question — it is a statement.
+- **Transitions timed by distance.** A hand crossing from the forehead to the opposite hip has four times as far to travel as one moving across the chest. Given the same fixed beat, the long one snaps, and a snap reads as a dropped frame rather than as movement.
+- **Depth faked by size.** Several signs are defined by moving toward the person being addressed — THANK-YOU, YOU, FINE. In a plane that is a hand that simply stops, so it is drawn larger as it comes forward.
+
+**These are real signs. This is not fluent ASL, and the interface says so in every place it appears.** ASL is not English with the words swapped: it orders a sentence topic-first, moves verbs through space to show who did what to whom, uses classifiers that no English word triggers, and carries whole pieces of grammar on the face. Anything driven by English text must walk the sentence left to right, which produces something closer to Signed Exact English — laborious for a fluent signer to read.
+
+So it runs as **key signs beside the full caption**, never instead of it, and function words are dropped rather than signed because padding the sequence would make the claim to be interpreting louder while making it less true. It was also built without a Deaf signer in the room, which is the largest caveat of the lot and is stated wherever the feature is offered.
+
+### Fingerspelling
+
+The manual alphabet and the digits, from a **parametric hand rig** rather than a set of pictures: a palm, five digits, three phalanges each, posed by curl and spread and then projected.
 
 A rig rather than twenty-six drawings, for two reasons. Poses interpolate, so the hand travels between letters the way a hand does — and a fingerspelling reader follows that travel as much as the shapes, which is why cutting between stills is so much harder to read at the same rate. And a pose is a short list of numbers that can be inspected and corrected against a reference, which a bitmap cannot.
 
-**This is fingerspelling. It is not sign language, and the interface says so.** ASL, BSL and ISL are full languages whose grammar lives in movement, in facial expression, in where a sign is placed in the space in front of the signer, and in both hands at once. A single drawn hand cannot produce any of that, and shipping it under the word "sign language" would be a promise of access that could not be kept.
+Fingerspelling is what carries names, medical terms and numbers — which signers spell in ordinary conversation rather than searching for a sign, and which is exactly what this application produces. So it does double duty: it is offered on its own, and it is what the signer falls back to for anything the lexicon does not cover.
 
-What fingerspelling genuinely carries is names, medical terms and numbers — which Deaf signers fingerspell in ordinary conversation, and which is exactly what this application produces. So the companion pulls the measurements and names out of each reply and spells those alongside the full caption, rather than grinding through every article and preposition at two letters a second. Fingerspelling a whole sentence would be slower than reading the caption already on screen.
-
-Four letters are marked **approximate** wherever they appear: M, N, R and T each need one finger to cross behind or lie under another, which a hand flexed in a single plane cannot represent. They are flagged rather than quietly shipped as correct, because a reader who knows a shape is wrong can compensate and a reader who has been told it is right cannot.
+Four letters are marked **approximate** wherever they appear: M, N, R and T each need one finger to cross behind or lie under another, which a hand flexed in a single plane cannot represent. They are flagged rather than quietly shipped as correct, because a reader who knows a shape is wrong can compensate and a reader who has been told it is right cannot. A handful of signs are marked the same way, for the same kind of reason — usually a palm orientation a flat drawing cannot show.
 
 Some smaller decisions that turned out to matter:
 
 - **Every digit is outlined.** Six letters — A, E, M, N, S and T — are the same closed fist distinguished only by the thumb. Without a line around it, the thumb is the same colour as the palm it lies against and all six become one picture.
+- **The sleeves are a different shade from the torso.** Drawn in the same colour, a sleeve lying across the chest disappears into it, and the forearm below is left looking like a bar floating in front of the body with nothing holding it up.
+- **The hands cast a shadow.** A hand signing over the chest is skin on skin, and an outline alone is not enough separation to read quickly.
 - **Doubled letters dip.** Without a deliberate break, "LL" is a hand that does not move for two beats and the reader cannot tell one letter from two.
 - **J and Z carry their paths.** Both are defined by movement; without it, J is indistinguishable from I.
 - **Four skin tones.** A hand is a picture of a person's hand, and defaulting everybody to one shade is a choice rather than a neutral position.
@@ -207,9 +227,7 @@ For people who are Deaf, hard of hearing, or cannot speak:
 - **Every audio-only cue given a visible equivalent**, including whether the assistant is thinking, so silence is never ambiguous between "working" and "broken".
 - **Prompt changes**: the model is told its replies are being read rather than heard, so it never refers to its own tone of voice, and never asks someone to speak or remarks on their typing.
 
-- **Fingerspelling**, as an option rather than a default — see the section above for what it is and what it is not.
-
-**On a signing avatar.** A companion that signs is a linguistics problem, not a rendering one, and it is not built without Deaf signers in the room. Doing it properly needs a motion-captured avatar validated by Deaf signers against a real grammar, which is a project rather than a component. The manual alphabet is a different and much smaller thing that can be done properly, is genuinely what signers use for names, numbers and medical terms, and is therefore here under its own name.
+- **On-screen signing**, as an option rather than a default, at three levels: off, fingerspelling alone, or the full signer falling back to spelling. See the section above for what each is and what it is not. The caption stays on in every case.
 
 ---
 
@@ -327,7 +345,7 @@ src/
   components/       UI, one component per agent
   app/appointments  booking and upcoming sessions
   app/history       past readings, trends, Claude's review
-  app/sign          the fingerspelling studio and the alphabet chart
+  app/sign          the signing studio, the lexicon, and the alphabet chart
   app/api/          converse + interpret (Claude), speak (Polly), sessions (S3), services
 public/audio/       the capture worklet, which runs on the audio thread
 public/portraits/   the six illustrated companion faces
