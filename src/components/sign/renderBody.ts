@@ -79,18 +79,27 @@ export interface Idle {
   time: number;
 }
 
-function idleSway(time: number): number {
+export function idleSway(time: number): number {
   // Two periods that do not divide into each other, so the motion never
-  // settles into an obvious loop.
-  return Math.sin(time * 0.9) * 0.006 + Math.sin(time * 0.37) * 0.004;
+  // settles into an obvious loop. Amplitude is a few pixels at typical sizes:
+  // enough that the figure is visibly alive, small enough that it never
+  // competes with the signing for attention.
+  return Math.sin(time * 0.9) * 0.017 + Math.sin(time * 0.37) * 0.009;
 }
 
-/** 0 open, 1 shut. A blink every few seconds, fast on the way down. */
-function idleBlink(time: number): number {
+/**
+ * 0 open, 1 shut. A blink every few seconds.
+ *
+ * A real blink is around a tenth of a second, which at this scale is over
+ * before anyone registers it. Drawn slightly longer than life so it actually
+ * does the job of making the figure look awake.
+ */
+export function idleBlink(time: number): number {
   const period = 4.3;
+  const shut = 0.22;
   const phase = time % period;
-  if (phase > 0.16) return 0;
-  return Math.sin((phase / 0.16) * Math.PI);
+  if (phase > shut) return 0;
+  return Math.sin((phase / shut) * Math.PI);
 }
 
 export function drawSigner(

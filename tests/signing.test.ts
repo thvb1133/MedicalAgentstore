@@ -13,6 +13,7 @@ import { HANDSHAPES } from "../src/lib/sign/handshapes";
 import { blendPoses, buildHand } from "../src/lib/sign/hand";
 import { LEXICON, frameOf, signFor } from "../src/lib/sign/lexicon";
 import { compose, coverage, glossOf } from "../src/lib/sign/compose";
+import { idleBlink, idleSway } from "../src/components/sign/renderBody";
 import { buildTimeline, stateAt } from "../src/lib/sign/sequence";
 
 function distance(a: Point, b: Point): number {
@@ -486,5 +487,43 @@ describe("turning the palm over", () => {
       return Math.max(...xs) - Math.min(...xs);
     };
     expect(span(edge)).toBeLessThan(span(wide) * 0.3);
+  });
+});
+
+describe("the idle", () => {
+  it("blinks at a plausible rate, and only briefly", () => {
+    let shut = 0;
+    let blinks = 0;
+    let wasShut = false;
+    for (let t = 0; t < 60; t += 1 / 60) {
+      const closed = idleBlink(t) > 0.5;
+      if (closed) shut += 1 / 60;
+      if (closed && !wasShut) blinks++;
+      wasShut = closed;
+    }
+    // Humans blink somewhere around ten to twenty times a minute.
+    expect(blinks).toBeGreaterThanOrEqual(10);
+    expect(blinks).toBeLessThanOrEqual(20);
+    // And the eyes are open the overwhelming majority of the time.
+    expect(shut / 60).toBeLessThan(0.05);
+  });
+
+  it("never leaves the eyes shut or half shut at rest", () => {
+    expect(idleBlink(0.5)).toBe(0);
+    expect(idleBlink(2)).toBe(0);
+  });
+
+  it("sways gently enough not to compete with the signing", () => {
+    const samples = [];
+    for (let t = 0; t < 40; t += 0.05) samples.push(idleSway(t));
+    const amplitude = Math.max(...samples) - Math.min(...samples);
+    // In body units, where a head is 0.62 across.
+    expect(amplitude).toBeGreaterThan(0.02);
+    expect(amplitude).toBeLessThan(0.08);
+  });
+
+  it("does not settle into a visible loop", () => {
+    // Two incommensurate periods, so the figure never repeats exactly.
+    expect(Math.abs(idleSway(0) - idleSway(2 * Math.PI / 0.9))).toBeGreaterThan(1e-4);
   });
 });

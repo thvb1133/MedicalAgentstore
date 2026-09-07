@@ -51,7 +51,7 @@ npm run dev
 Open <http://localhost:3000>. Camera access requires `localhost` or HTTPS.
 
 ```bash
-npm test              # 288 tests against synthetic signals with known ground truth
+npm test              # 292 tests against synthetic signals with known ground truth
 npm run typecheck
 npm run lint
 npm run build
