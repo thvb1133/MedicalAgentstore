@@ -45,6 +45,11 @@ const PATHS: Record<IconName, React.ReactNode> = {
       <path d="M4 20 14 10" />
     </>
   ),
+  waveform: (
+    <>
+      <path d="M3 12h2.5l2-6 3 13 3-9.5 2 4.5H21" />
+    </>
+  ),
 };
 
 export function AgentIcon({

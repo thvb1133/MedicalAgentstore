@@ -37,9 +37,31 @@ export type AgentIcon =
   | "face"
   | "strip"
   | "dish"
-  | "leaf";
+  | "leaf"
+  | "waveform";
 
 export const AGENTS: AgentDefinition[] = [
+  {
+    slug: "companion",
+    name: "Live Wellness Companion",
+    summary:
+      "A spoken conversation with an assistant that can see your pulse and hear the acoustics of your voice while you talk.",
+    measures: [
+      "Heart rate, breathing and HRV from the camera, continuously",
+      "Pitch, jitter, shimmer and harmonics-to-noise from the microphone",
+      "Speech rate and how much of the time is spent pausing",
+      "All of it passed to Claude as context for the conversation",
+    ],
+    sensors: ["camera", "microphone"],
+    status: "research",
+    evidence:
+      "Combines the rPPG chain used by the vitals agent with the standard clinical-phonetics measures — F0, jitter, shimmer and harmonics-to-noise ratio as defined by Boersma (1993) and implemented in Praat. The conversation layer is Claude, given the measurements as sensor context with its limits stated in the system prompt.",
+    limits:
+      "The acoustic measures describe the sound of a voice and nothing more. Published links between them and depression, Parkinson's or cognitive decline are population-level findings that do not transfer to one person in one conversation, and the assistant is instructed never to apply them. It is not a therapist and cannot diagnose anything.",
+    durationSeconds: 300,
+    accent: "#c084fc",
+    icon: "waveform",
+  },
   {
     slug: "vitals",
     name: "Contactless Vitals",
