@@ -133,6 +133,35 @@ export function magnitudeSpectrum(
  * which is the basis of our confidence score: a clean pulse concentrates
  * power in one narrow peak, noise spreads it out.
  */
+/**
+ * Fraction of the power between `loHz` and `hiHz` that sits within a narrow
+ * neighbourhood of `freq`.
+ *
+ * Kept separate from peak finding because the two bands are not always the
+ * same: after harmonic correction we search a narrow window for the refined
+ * frequency, but the prominence must still be measured against the whole
+ * physiological band. Measuring it against the search window instead would
+ * return very nearly 1.0 for any input, which reads as total confidence.
+ */
+export function prominenceAt(
+  spec: Spectrum,
+  freq: number,
+  loHz: number,
+  hiHz: number,
+  halfWidthHz = 0.12,
+): number {
+  let bandPower = 0;
+  let peakPower = 0;
+  for (let i = 0; i < spec.freqs.length; i++) {
+    const f = spec.freqs[i];
+    if (f < loHz || f > hiHz) continue;
+    const power = spec.mags[i] * spec.mags[i];
+    bandPower += power;
+    if (Math.abs(f - freq) <= halfWidthHz) peakPower += power;
+  }
+  return bandPower <= 0 ? 0 : clamp(peakPower / bandPower, 0, 1);
+}
+
 export function dominantPeak(
   spec: Spectrum,
   loHz: number,
@@ -181,4 +210,50 @@ export function dominantPeak(
 
 export function clamp(v: number, lo: number, hi: number): number {
   return v < lo ? lo : v > hi ? hi : v;
+}
+
+/** Largest magnitude within `tolHz` of `freq`, for harmonic checks. */
+export function magnitudeNear(spec: Spectrum, freq: number, tolHz: number): number {
+  let best = 0;
+  for (let i = 0; i < spec.freqs.length; i++) {
+    if (Math.abs(spec.freqs[i] - freq) > tolHz) continue;
+    if (spec.mags[i] > best) best = spec.mags[i];
+  }
+  return best;
+}
+
+/**
+ * Correct a peak that is actually the second harmonic of the true rate.
+ *
+ * A real pulse is not a sine wave — the dicrotic notch puts substantial
+ * energy at twice the heart rate, and at low rates that harmonic can be the
+ * taller of the two. Reporting it doubles the heart rate, which is the
+ * classic rPPG failure and the one most likely to be believed, since 96 BPM
+ * is a perfectly plausible reading for someone whose pulse is 48.
+ *
+ * So whenever half the detected frequency still falls inside the band and
+ * carries a substantial fraction of the peak's magnitude, the lower one wins.
+ */
+export function correctForHarmonic(
+  spec: Spectrum,
+  peak: SpectralPeak,
+  loHz: number,
+  hiHz: number,
+  ratio = 0.5,
+): SpectralPeak {
+  const half = peak.freq / 2;
+  if (half < loHz) return peak;
+
+  const tol = Math.max(0.04, (spec.freqs[1] - spec.freqs[0]) * 2);
+  const halfMag = magnitudeNear(spec, half, tol);
+  if (halfMag < peak.magnitude * ratio) return peak;
+
+  const refined = dominantPeak(spec, Math.max(loHz, half - tol), half + tol);
+  if (!refined) return peak;
+
+  // Re-measure prominence against the full band, not the narrow search window.
+  return {
+    ...refined,
+    prominence: prominenceAt(spec, refined.freq, loHz, hiHz),
+  };
 }

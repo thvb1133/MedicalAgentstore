@@ -1,0 +1,27 @@
+# AWS Amplify Hosting build specification.
+#
+# Set ANTHROPIC_API_KEY, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION
+# and optionally SANJIVANI_SESSION_BUCKET under App settings → Environment
+# variables. Amplify detects Next.js and provisions the SSR runtime the API
+# routes need; nothing extra is required for that.
+
+version: 1
+frontend:
+  phases:
+    preBuild:
+      commands:
+        - npm ci
+        # Serve the MediaPipe runtime and models from our own origin so the
+        # deployed app does not depend on the Google CDN at run time.
+        - npm run fetch-models
+    build:
+      commands:
+        - npm run build
+  artifacts:
+    baseDirectory: .next
+    files:
+      - "**/*"
+  cache:
+    paths:
+      - node_modules/**/*
+      - .next/cache/**/*

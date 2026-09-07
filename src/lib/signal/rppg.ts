@@ -23,7 +23,7 @@ export interface RgbTrace {
   b: ArrayLike<number>;
 }
 
-export type RppgMethod = "pos" | "chrom";
+export type RppgMethod = "pos" | "chrom" | "green";
 
 /** Physiological plausibility bounds: 40-180 BPM. */
 export const PULSE_BAND_HZ = { lo: 40 / 60, hi: 180 / 60 } as const;
@@ -120,6 +120,19 @@ export function chromPulse(trace: RgbTrace, fs: number): Float64Array {
 }
 
 /**
+ * The green channel on its own, detrended.
+ *
+ * Kept as a third candidate because it is the strongest single carrier of the
+ * haemoglobin absorption signal. POS and CHROM earn their place by cancelling
+ * *correlated* artefacts — motion, illumination change — but both combine
+ * three channels and therefore add up three lots of uncorrelated sensor
+ * noise. When the subject is still and the light is steady, plain green wins.
+ */
+export function greenPulse(trace: RgbTrace): Float64Array {
+  return detrend(trace.g);
+}
+
+/**
  * Full extraction: raw RGB means to a clean, band-limited pulse waveform.
  */
 export function extractPulse(
@@ -127,9 +140,31 @@ export function extractPulse(
   fs: number,
   method: RppgMethod = "pos",
 ): Float64Array {
-  const raw = method === "chrom" ? chromPulse(trace, fs) : posPulse(trace, fs);
+  const raw =
+    method === "chrom"
+      ? chromPulse(trace, fs)
+      : method === "green"
+        ? greenPulse(trace)
+        : posPulse(trace, fs);
   const filtered = bandpass(detrend(raw), fs, PULSE_BAND_HZ.lo, PULSE_BAND_HZ.hi);
   return normalise(filtered);
+}
+
+/**
+ * All three extractions of the same trace.
+ *
+ * The engine picks between them per measurement rather than committing to one
+ * globally, because which is best depends on conditions that change from
+ * second to second: POS under movement, green under still, low light.
+ */
+export function extractPulseCandidates(
+  trace: RgbTrace,
+  fs: number,
+): Array<{ method: RppgMethod; waveform: Float64Array }> {
+  return (["pos", "chrom", "green"] as const).map((method) => ({
+    method,
+    waveform: extractPulse(trace, fs, method),
+  }));
 }
 
 /**

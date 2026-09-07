@@ -18,6 +18,8 @@ const eslintConfig = [
       "out/**",
       "build/**",
       "next-env.d.ts",
+      // Vendored MediaPipe WASM runtime, fetched by `npm run fetch-models`.
+      "public/mediapipe/**",
     ],
   },
 ];

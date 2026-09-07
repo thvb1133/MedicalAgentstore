@@ -79,8 +79,11 @@ export class AlertnessTracker {
   private baseline: BaselineState = { openEar: 0, samples: 0, ready: false };
   private baselineSum = 0;
   private firstTimestamp: number | null = null;
+  private readonly windowSeconds: number;
 
-  constructor(private readonly windowSeconds = 60) {}
+  constructor(windowSeconds = 60) {
+    this.windowSeconds = windowSeconds;
+  }
 
   reset(): void {
     this.frames = [];

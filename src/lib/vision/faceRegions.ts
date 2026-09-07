@@ -49,27 +49,6 @@ export interface Box {
   y1: number;
 }
 
-function boxAround(points: Landmark[], padX = 0, padY = 0): Box {
-  let x0 = Infinity;
-  let y0 = Infinity;
-  let x1 = -Infinity;
-  let y1 = -Infinity;
-  for (const p of points) {
-    if (p.x < x0) x0 = p.x;
-    if (p.y < y0) y0 = p.y;
-    if (p.x > x1) x1 = p.x;
-    if (p.y > y1) y1 = p.y;
-  }
-  const w = x1 - x0;
-  const h = y1 - y0;
-  return {
-    x0: x0 - w * padX,
-    y0: y0 - h * padY,
-    x1: x1 + w * padX,
-    y1: y1 + h * padY,
-  };
-}
-
 /**
  * The three regions of interest, in normalised image coordinates.
  *

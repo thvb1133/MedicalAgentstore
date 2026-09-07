@@ -30,6 +30,7 @@ export interface VitalsSnapshot extends VitalsResult {
 
 const EMPTY: VitalsSnapshot = {
   heartRateBpm: null,
+  method: null,
   breathingRateBpm: null,
   hrv: {
     sdnn: null,

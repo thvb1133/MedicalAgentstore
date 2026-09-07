@@ -14,7 +14,7 @@
  */
 
 import { dominantPeak, magnitudeSpectrum } from "../signal/fft";
-import { detrend, mean, resampleUniform, stdDev } from "../signal/filters";
+import { bandpass, detrend, mean, resampleUniform, stdDev } from "../signal/filters";
 
 /** MediaPipe hand landmark indices. */
 export const HAND_POINTS = {
@@ -79,10 +79,23 @@ export interface MotorResult {
 
 const TREMOR_BAND = { lo: 2.5, hi: 12 };
 
+/**
+ * Smallest oscillation worth reporting, in normalised image units.
+ *
+ * MediaPipe landmark positions jitter by roughly a thousandth of the frame
+ * width from one frame to the next even on a perfectly still hand. Anything
+ * at or below that is tracker noise, not a tremor, so it is reported as no
+ * tremor rather than as a very small one.
+ */
+const MIN_TREMOR_AMPLITUDE = 0.0008;
+
 export class MotorTracker {
   private samples: MotorSample[] = [];
+  private readonly windowSeconds: number;
 
-  constructor(private readonly windowSeconds = 20) {}
+  constructor(windowSeconds = 20) {
+    this.windowSeconds = windowSeconds;
+  }
 
   reset(): void {
     this.samples = [];
@@ -177,8 +190,22 @@ function analyseTremor(
     };
   }
 
-  const dx = detrend(x);
-  const dy = detrend(y);
+  // Restrict to the tremor band before measuring anything. Detrending alone
+  // leaves slow voluntary movement in the signal, which would be counted as
+  // tremor amplitude even though none of it lies at the tremor frequency.
+  const dx = bandpass(detrend(x), fs, TREMOR_BAND.lo, maxResolvable);
+  const dy = bandpass(detrend(y), fs, TREMOR_BAND.lo, maxResolvable);
+
+  const amplitude = Math.hypot(stdDev(dx), stdDev(dy)) * Math.SQRT2;
+  if (amplitude < MIN_TREMOR_AMPLITUDE) {
+    return {
+      frequencyHz: null,
+      amplitude: null,
+      regularity: null,
+      band: "none",
+      frameRateLimited,
+    };
+  }
 
   const specX = magnitudeSpectrum(dx, fs);
   const specY = magnitudeSpectrum(dy, fs);
@@ -218,7 +245,6 @@ function analyseTremor(
     };
   }
 
-  const amplitude = Math.hypot(stdDev(dx), stdDev(dy)) * Math.SQRT2;
   const f = best.freq;
   const band: TremorResult["band"] =
     f < 4 ? "low-frequency" : f <= 6 ? "rest-4-6" : "postural-6-12";

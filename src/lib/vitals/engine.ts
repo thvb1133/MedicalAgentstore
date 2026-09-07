@@ -9,13 +9,21 @@
  * user cannot tell the difference.
  */
 
-import { dominantPeak, magnitudeSpectrum } from "../signal/fft";
+import {
+  clamp,
+  correctForHarmonic,
+  dominantPeak,
+  magnitudeSpectrum,
+  type SpectralPeak,
+} from "../signal/fft";
 import { median, resampleUniform, stdDev } from "../signal/filters";
 import {
   BREATHING_BAND_HZ,
   PULSE_BAND_HZ,
   extractBreathing,
   extractPulse,
+  extractPulseCandidates,
+  type RgbTrace,
   type RppgMethod,
 } from "../signal/rppg";
 import { computeHrv, findBeats, stressFromSdnn, type HrvResult } from "../signal/peaks";
@@ -51,6 +59,8 @@ export interface QualityReport {
 
 export interface VitalsResult {
   heartRateBpm: number | null;
+  /** Which extraction the reported heart rate came from. */
+  method: RppgMethod | null;
   breathingRateBpm: number | null;
   hrv: HrvResult;
   stressIndex: number | null;
@@ -67,7 +77,12 @@ export interface EngineOptions {
   windowSeconds: number;
   /** Grid the irregular frame timestamps get resampled onto. */
   targetFps: number;
-  method: RppgMethod;
+  /**
+   * Pin the extraction method, or leave as "auto" to pick per measurement by
+   * spectral prominence. Auto is the right default; the others exist for
+   * comparing methods against ground truth.
+   */
+  method: RppgMethod | "auto";
   /** Below this quality score the engine reports values as null. */
   minQuality: number;
 }
@@ -75,7 +90,7 @@ export interface EngineOptions {
 export const DEFAULT_ENGINE_OPTIONS: EngineOptions = {
   windowSeconds: 30,
   targetFps: 30,
-  method: "pos",
+  method: "auto",
   minQuality: 0.35,
 };
 
@@ -86,8 +101,11 @@ export const DEFAULT_ENGINE_OPTIONS: EngineOptions = {
  */
 export class VitalsBuffer {
   private frames: VitalsFrame[] = [];
+  private readonly windowSeconds: number;
 
-  constructor(private readonly windowSeconds: number) {}
+  constructor(windowSeconds: number) {
+    this.windowSeconds = windowSeconds;
+  }
 
   push(frame: VitalsFrame): void {
     this.frames.push(frame);
@@ -136,6 +154,7 @@ function assessQuality(
   frames: VitalsFrame[],
   opts: EngineOptions,
   peakProminence: number,
+  agreement: number,
 ): QualityReport {
   const fill = Math.min(1, frames.length / (opts.windowSeconds * opts.targetFps));
 
@@ -168,11 +187,22 @@ function assessQuality(
   const motionTerm = Math.exp(-motionMedian / 0.004);
   const rateTerm = Math.min(1, effectiveFps / 15);
   const jitterTerm = Math.exp(-jitter * 1.5);
-  const spectralTerm = Math.min(1, peakProminence / 0.35);
+  // A 0.24 Hz window inside a 2.3 Hz band is about a twentieth of it, so
+  // uniform noise alone scores roughly 0.05 prominence. The floor sits above
+  // that, and full marks need the tight spectral line a real pulse produces —
+  // clean traces reach 0.8, so 0.7 is a demanding but attainable bar.
+  const spectralTerm = clamp((peakProminence - 0.15) / (0.7 - 0.15), 0, 1);
   const fillTerm = Math.min(1, fill / 0.5);
+  const agreementTerm = agreement;
 
   const score =
-    faceTerm * motionTerm * rateTerm * jitterTerm * spectralTerm * fillTerm;
+    faceTerm *
+    motionTerm *
+    rateTerm *
+    jitterTerm *
+    spectralTerm *
+    fillTerm *
+    agreementTerm;
 
   const candidates: Array<[number, string]> = [
     [faceTerm, "Face not consistently visible"],
@@ -181,6 +211,7 @@ function assessQuality(
     [jitterTerm, "Frame timing unstable — close other tabs"],
     [spectralTerm, "Pulse signal weak — try brighter, even lighting"],
     [fillTerm, "Still collecting data"],
+    [agreementTerm, "Pulse estimate unstable — extraction methods disagree"],
   ];
   candidates.sort((a, b) => a[0] - b[0]);
   const limiting = candidates[0][0] < 0.85 ? candidates[0][1] : null;
@@ -192,6 +223,77 @@ function assessQuality(
     effectiveFps,
     fill,
   };
+}
+
+export interface PulseChoice {
+  waveform: Float64Array;
+  peak: SpectralPeak | null;
+  method: RppgMethod | null;
+  /**
+   * How strongly the other extractions corroborate this frequency, 0-1.
+   *
+   * POS, CHROM and the green channel weight the three colour channels very
+   * differently, so a noise peak that happens to look prominent in one of
+   * them rarely appears at the same frequency in the others. Agreement is
+   * therefore close to independent evidence, and it is the term that stops
+   * the engine reporting a confident wrong number.
+   */
+  agreement: number;
+}
+
+/** Two rate estimates count as agreeing within this many BPM. */
+const AGREEMENT_TOLERANCE_BPM = 4;
+
+/**
+ * Choose between the three extractions by spectral prominence.
+ *
+ * Prominence — how much of the in-band power sits under the tallest peak —
+ * is the right criterion because it is exactly what distinguishes a pulse
+ * from noise: a heartbeat concentrates power into one narrow line, noise
+ * spreads it across the band. Picking per measurement rather than committing
+ * to POS globally recovers the cases where combining three channels costs
+ * more in added sensor noise than it gains in artefact rejection.
+ *
+ * Every candidate is harmonic-corrected first, so a method is not rewarded
+ * for confidently reporting double the true rate.
+ */
+export function selectPulse(
+  trace: RgbTrace,
+  fs: number,
+  method: EngineOptions["method"] = "auto",
+): PulseChoice {
+  const evaluate = (waveform: Float64Array, m: RppgMethod) => {
+    const spec = magnitudeSpectrum(waveform, fs);
+    const raw = dominantPeak(spec, PULSE_BAND_HZ.lo, PULSE_BAND_HZ.hi);
+    const peak = raw ? correctForHarmonic(spec, raw, PULSE_BAND_HZ.lo, PULSE_BAND_HZ.hi) : null;
+    return { waveform, peak, method: m, score: peak?.prominence ?? 0 };
+  };
+
+  if (method !== "auto") {
+    // A pinned method has nothing to corroborate it, so agreement is unknown
+    // rather than perfect, and is reported as neutral.
+    return { ...evaluate(extractPulse(trace, fs, method), method), agreement: 0.5 };
+  }
+
+  const candidates = extractPulseCandidates(trace, fs).map((c) =>
+    evaluate(c.waveform, c.method),
+  );
+  candidates.sort((a, b) => b.score - a.score);
+  const best = candidates[0];
+
+  if (!best.peak) return { ...best, agreement: 0 };
+
+  const bestBpm = best.peak.freq * 60;
+  const others = candidates.slice(1).filter((c) => c.peak !== null);
+  const concurring = others.filter(
+    (c) => Math.abs((c.peak as SpectralPeak).freq * 60 - bestBpm) <= AGREEMENT_TOLERANCE_BPM,
+  ).length;
+
+  // One corroborating method is worth a lot more than none; the second adds
+  // less, since by then the frequency is almost certainly real.
+  const agreement = others.length === 0 ? 0.4 : concurring === 0 ? 0.15 : concurring === 1 ? 0.75 : 1;
+
+  return { ...best, agreement };
 }
 
 /**
@@ -209,6 +311,7 @@ export function analyseVitals(
 
   const emptyResult = (quality: QualityReport): VitalsResult => ({
     heartRateBpm: null,
+    method: null,
     breathingRateBpm: null,
     hrv: {
       sdnn: null,
@@ -226,7 +329,7 @@ export function analyseVitals(
   });
 
   if (frames.length < 16 || buffer.spanSeconds < 4) {
-    return emptyResult(assessQuality(frames, opts, 0));
+    return emptyResult(assessQuality(frames, opts, 0, 0));
   }
 
   const timestamps = frames.map((f) => f.timestampMs);
@@ -234,11 +337,11 @@ export function analyseVitals(
   const gs = resampleUniform(timestamps, frames.map((f) => f.g), fs).values;
   const bs = resampleUniform(timestamps, frames.map((f) => f.b), fs).values;
 
-  const pulse = extractPulse({ r: rs, g: gs, b: bs }, fs, opts.method);
-  const spec = magnitudeSpectrum(pulse, fs);
-  const peak = dominantPeak(spec, PULSE_BAND_HZ.lo, PULSE_BAND_HZ.hi);
+  const trace: RgbTrace = { r: rs, g: gs, b: bs };
+  const chosen = selectPulse(trace, fs, opts.method);
+  const { waveform: pulse, peak, method, agreement } = chosen;
 
-  const quality = assessQuality(frames, opts, peak?.prominence ?? 0);
+  const quality = assessQuality(frames, opts, peak?.prominence ?? 0, agreement);
   const spectralHr = peak ? peak.freq * 60 : null;
 
   if (quality.score < opts.minQuality || spectralHr === null) {
@@ -275,6 +378,7 @@ export function analyseVitals(
 
   return {
     heartRateBpm,
+    method,
     breathingRateBpm,
     hrv,
     stressIndex: stressFromSdnn(hrv.sdnn),
