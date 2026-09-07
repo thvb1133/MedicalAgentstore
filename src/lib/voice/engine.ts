@@ -22,7 +22,7 @@
  * the function says so.
  */
 
-import { clamp } from "../signal/fft";
+import { clamp, fftInPlace } from "../signal/fft";
 import { mean, stdDev, median } from "../signal/filters";
 
 /** Vocal-fold vibration below this is almost certainly a tracking error. */
@@ -120,31 +120,55 @@ function estimatePeriod(
   if (maxLag <= minLag) return { f0Hz: 0, periodicity: 0 };
 
   const m = mean(frame);
-  const centred = new Float64Array(frame.length);
-  for (let i = 0; i < frame.length; i++) centred[i] = frame[i] - m;
+  const n = frame.length;
+  const centred = new Float64Array(n);
+  for (let i = 0; i < n; i++) centred[i] = frame[i] - m;
 
   let energy = 0;
-  for (let i = 0; i < centred.length; i++) energy += centred[i] * centred[i];
+  for (let i = 0; i < n; i++) energy += centred[i] * centred[i];
   if (energy < 1e-12) return { f0Hz: 0, periodicity: 0 };
+
+  /**
+   * Raw autocorrelation via the Wiener-Khinchin theorem.
+   *
+   * Correlating directly costs one pass over the frame per candidate lag, and
+   * there are several hundred candidates. Doing it through the FFT is an order
+   * of magnitude cheaper, which is what makes it affordable to run this every
+   * couple of seconds in a tab that is already spending most of its budget on
+   * the face landmarker.
+   *
+   * The transform is zero-padded to at least twice the frame length so the
+   * circular correlation the FFT computes agrees with the linear one we want.
+   */
+  let size = 1;
+  while (size < n * 2) size <<= 1;
+  const re = new Float64Array(size);
+  const im = new Float64Array(size);
+  re.set(centred);
+  fftInPlace(re, im);
+  for (let i = 0; i < size; i++) {
+    re[i] = re[i] * re[i] + im[i] * im[i];
+    im[i] = 0;
+  }
+  // A real, even sequence is its own conjugate, so the inverse transform is
+  // the forward transform scaled by 1/size.
+  fftInPlace(re, im);
+  const raw = re;
+
+  // Prefix sums of energy give each lag's two normalisation terms in constant
+  // time, keeping the normalised correlation exact rather than approximate.
+  const prefix = new Float64Array(n + 1);
+  for (let i = 0; i < n; i++) prefix[i + 1] = prefix[i] + centred[i] * centred[i];
 
   let bestLag = 0;
   let bestScore = 0;
   const scores = new Float64Array(maxLag + 1);
 
   for (let lag = minLag; lag <= maxLag; lag++) {
-    let sum = 0;
-    let normA = 0;
-    let normB = 0;
-    const n = centred.length - lag;
-    for (let i = 0; i < n; i++) {
-      const a = centred[i];
-      const b = centred[i + lag];
-      sum += a * b;
-      normA += a * a;
-      normB += b * b;
-    }
+    const normA = prefix[n - lag];
+    const normB = prefix[n] - prefix[lag];
     const denom = Math.sqrt(normA * normB);
-    const score = denom > 1e-12 ? sum / denom : 0;
+    const score = denom > 1e-12 ? raw[lag] / size / denom : 0;
     scores[lag] = score;
     if (score > bestScore) {
       bestScore = score;
