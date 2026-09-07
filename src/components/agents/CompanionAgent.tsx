@@ -6,8 +6,10 @@ import { AvatarPresence } from "@/components/AvatarPresence";
 import { CameraStage } from "@/components/CameraStage";
 import { CaptionBar } from "@/components/CaptionBar";
 import { CompanionSettings } from "@/components/avatar/CompanionSettings";
+import { PortraitPresence } from "@/components/avatar/PortraitPresence";
 import { SignAvatar } from "@/components/sign/SignAvatar";
 import { SKIN_TONES } from "@/components/sign/render";
+import { usePortrait } from "@/hooks/usePortrait";
 import { spellableTerms } from "@/lib/sign/schedule";
 import { MetricTile } from "@/components/MetricTile";
 import { QualityMeter } from "@/components/QualityMeter";
@@ -216,6 +218,8 @@ export function CompanionAgent({ agent }: { agent: AgentDefinition }) {
   const signTone =
     SKIN_TONES.find((t) => t.id === profile.signTone)?.tone ?? SKIN_TONES[1].tone;
 
+  const portrait = usePortrait();
+
   const claudeMissing = servicesLoaded && !services.claude;
   const pollyMissing = servicesLoaded && !services.polly;
 
@@ -244,17 +248,28 @@ export function CompanionAgent({ agent }: { agent: AgentDefinition }) {
           onChange={updateProfile}
           onClose={() => setSettingsOpen(false)}
           speechAvailable={services.polly}
+          portrait={portrait}
         />
       )}
 
       <div className="grid gap-4 lg:grid-cols-[300px_1fr_310px]">
         <div className="space-y-4">
-          <AvatarPresence
-            avatar={avatar}
-            status={conversation.status}
-            level={voice.level}
-            heartRateBpm={snapshot.heartRateBpm}
-          />
+          {profile.presence === "portrait" ? (
+            <PortraitPresence
+              avatar={avatar}
+              status={conversation.status}
+              level={voice.level}
+              heartRateBpm={snapshot.heartRateBpm}
+              customImage={portrait.portrait}
+            />
+          ) : (
+            <AvatarPresence
+              avatar={avatar}
+              status={conversation.status}
+              level={voice.level}
+              heartRateBpm={snapshot.heartRateBpm}
+            />
+          )}
 
           <div className="flex flex-wrap items-center gap-2">
             <button

@@ -20,11 +20,23 @@ import { clampRate, getVoice, RATE_DEFAULT, voiceForLanguage } from "./voices";
 /** How prominent the on-screen captions are. */
 export type CaptionMode = "off" | "on" | "large";
 
+/** Whether the companion appears as an illustrated face or an abstract shape. */
+export type PresenceStyle = "portrait" | "abstract";
+
 export interface CompanionProfile {
   /** What the person would like to be called. Optional and never required. */
   displayName: string;
   ageBand: AgeBand;
   avatarId: string;
+  /**
+   * A drawn face, or an abstract shape.
+   *
+   * Both are offered rather than one being replaced. A face is easier to sit
+   * with for ten minutes and is what most people expect; a shape does not
+   * imply a person who never said any of this, which some people prefer from
+   * something giving them health information.
+   */
+  presence: PresenceStyle;
   /**
    * The language of the whole conversation: what the browser listens for,
    * what Claude replies in, and which voices the picker offers.
@@ -63,6 +75,7 @@ const STORAGE_KEY = "sanjivani-setu.companion-profile.v1";
 const AGE_BANDS: AgeBand[] = ["child", "teen", "adult", "older"];
 const CAPTION_MODES: CaptionMode[] = ["off", "on", "large"];
 const SIGN_TONES = ["light", "medium", "tan", "deep"];
+const PRESENCE_STYLES: PresenceStyle[] = ["portrait", "abstract"];
 
 /** Constrained to what the history route will accept as a key segment. */
 export function generateProfileId(): string {
@@ -81,6 +94,7 @@ export function defaultProfile(): CompanionProfile {
     displayName: "",
     ageBand: "adult",
     avatarId: avatar.id,
+    presence: "portrait",
     languageCode: DEFAULT_LANGUAGE,
     voiceId: avatar.defaultVoiceId,
     speechRate: RATE_DEFAULT,
@@ -153,6 +167,9 @@ export function parseProfile(raw: unknown): CompanionProfile {
     displayName: asString(p.displayName, base.displayName),
     ageBand,
     avatarId,
+    presence: PRESENCE_STYLES.includes(p.presence as PresenceStyle)
+      ? (p.presence as PresenceStyle)
+      : base.presence,
     languageCode,
     voiceId,
     speechRate: clampRate(typeof p.speechRate === "number" ? p.speechRate : base.speechRate),

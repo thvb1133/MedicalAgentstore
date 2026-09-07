@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { AvatarPresence } from "@/components/AvatarPresence";
+import { PortraitPresence } from "@/components/avatar/PortraitPresence";
 import {
   AGE_BANDS,
   avatarOr,
@@ -11,9 +12,11 @@ import {
   type AgeBand,
   type AvatarPreset,
 } from "@/lib/avatar/presets";
+import { ACCEPTED_TYPES } from "@/lib/avatar/portrait";
 import { SKIN_TONES } from "@/components/sign/render";
+import type { usePortrait } from "@/hooks/usePortrait";
 import { LANGUAGES, languageOr } from "@/lib/avatar/languages";
-import type { CaptionMode, CompanionProfile } from "@/lib/avatar/profile";
+import type { CaptionMode, CompanionProfile, PresenceStyle } from "@/lib/avatar/profile";
 import {
   clampRate,
   describeRate,
@@ -46,11 +49,13 @@ export function CompanionSettings({
   onChange,
   onClose,
   speechAvailable,
+  portrait,
 }: {
   profile: CompanionProfile;
   onChange: (next: CompanionProfile) => void;
   onClose: () => void;
   speechAvailable: boolean;
+  portrait: ReturnType<typeof usePortrait>;
 }) {
   const [previewing, setPreviewing] = useState<string | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
@@ -186,7 +191,28 @@ export function CompanionSettings({
             />
           </Section>
 
-          <Section title="Look" detail="Each one moves differently and talks differently.">
+          <Section
+            title="Look"
+            detail="A drawn face, or a shape that moves with your pulse and your voice."
+          >
+            <div className="mb-3 flex flex-wrap gap-2">
+              {(
+                [
+                  ["portrait", "A face"],
+                  ["abstract", "A shape"],
+                ] as Array<[PresenceStyle, string]>
+              ).map(([style, label]) => (
+                <Choice
+                  key={style}
+                  selected={profile.presence === style}
+                  onClick={() => set({ presence: style })}
+                  accent={avatar.palette.core}
+                >
+                  {label}
+                </Choice>
+              ))}
+            </div>
+
             <div className="grid gap-3 sm:grid-cols-3">
               {avatars.map((option) => {
                 const selected = option.id === profile.avatarId;
@@ -203,14 +229,26 @@ export function CompanionSettings({
                     }}
                   >
                     <div className="pointer-events-none overflow-hidden rounded-lg">
-                      <AvatarPresence
-                        avatar={option}
-                        status="listening"
-                        level={0.35}
-                        heartRateBpm={72}
-                        height={92}
-                        compact
-                      />
+                      {profile.presence === "portrait" ? (
+                        <PortraitPresence
+                          avatar={option}
+                          status="listening"
+                          level={0.35}
+                          heartRateBpm={72}
+                          height={92}
+                          compact
+                          customImage={selected ? portrait.portrait : null}
+                        />
+                      ) : (
+                        <AvatarPresence
+                          avatar={option}
+                          status="listening"
+                          level={0.35}
+                          heartRateBpm={72}
+                          height={92}
+                          compact
+                        />
+                      )}
                     </div>
                     <div className="mt-2 px-1 pb-1">
                       <div
@@ -227,6 +265,10 @@ export function CompanionSettings({
                 );
               })}
             </div>
+
+            {profile.presence === "portrait" && (
+              <PortraitUpload avatar={avatar} portrait={portrait} />
+            )}
           </Section>
 
           <Section
@@ -559,5 +601,78 @@ function Toggle({
         </span>
       </span>
     </button>
+  );
+}
+
+/**
+ * Uploading your own picture.
+ *
+ * The note is the point of this control as much as the button is. People
+ * upload a photograph of their own doctor, or of a relative, expecting the
+ * face to talk — and there is a real line between animating an illustration
+ * and animating a photograph of a person who never agreed to say any of this.
+ * Saying so here is more use than discovering it later and assuming the
+ * feature is broken.
+ */
+function PortraitUpload({
+  avatar,
+  portrait,
+}: {
+  avatar: AvatarPreset;
+  portrait: ReturnType<typeof usePortrait>;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  return (
+    <div className="mt-3 rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] p-3.5">
+      <div className="flex flex-wrap items-center gap-3">
+        <button
+          onClick={() => inputRef.current?.click()}
+          disabled={portrait.busy}
+          className="rounded-lg border px-3 py-1.5 text-[12px] font-medium transition-colors disabled:opacity-40"
+          style={{ borderColor: `${avatar.palette.core}66`, color: avatar.palette.core }}
+        >
+          {portrait.busy ? "Working…" : portrait.portrait ? "Use a different picture" : "Use my own picture"}
+        </button>
+        {portrait.portrait && (
+          <button
+            onClick={portrait.clear}
+            className="rounded-lg border border-[var(--border)] px-3 py-1.5 text-[12px] text-[var(--muted)] transition-colors hover:text-[var(--foreground)]"
+          >
+            Remove
+          </button>
+        )}
+        <input
+          ref={inputRef}
+          type="file"
+          accept={ACCEPTED_TYPES.join(",")}
+          className="hidden"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) void portrait.upload(file);
+            e.target.value = "";
+          }}
+        />
+      </div>
+
+      {portrait.error && (
+        <p className="mt-2 text-[11.5px]" style={{ color: "var(--bad)" }}>
+          {portrait.error}
+        </p>
+      )}
+
+      <p className="mt-2.5 text-[11.5px] leading-relaxed text-[var(--muted)]">
+        The picture is cropped and stored in this browser. It is never
+        uploaded, and the re-encoding strips the location your phone recorded
+        with it.
+      </p>
+      <p className="mt-1.5 text-[11.5px] leading-relaxed text-[var(--faint)]">
+        The face stays still and does not move its mouth. Driving a mouth from
+        the audio is the technique behind deepfakes, and on something that
+        says &ldquo;your blood pressure looks raised&rdquo; it would put words in
+        the mouth of a person who never said them. The pulse ring and the rim
+        carry the movement instead.
+      </p>
+    </div>
   );
 }

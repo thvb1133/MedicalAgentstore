@@ -61,11 +61,18 @@ export interface AvatarPreset {
   defaultVoiceId: string;
   /** Age bands this is offered for first. It is never restricted to them. */
   suitedTo: AgeBand[];
+  /**
+   * An illustrated portrait, for people who would rather talk to a face than
+   * a shape. Drawn rather than photographed, and it does not lip-sync — see
+   * `PortraitPresence` for why that line is where it is.
+   */
+  portrait: string;
 }
 
 export const AVATARS: AvatarPreset[] = [
   {
     id: "asha",
+    portrait: "/portraits/asha.webp",
     name: "Asha",
     tagline: "Warm and steady. A good default for most people.",
     style: "orb",
@@ -77,6 +84,7 @@ export const AVATARS: AvatarPreset[] = [
   },
   {
     id: "vikram",
+    portrait: "/portraits/vikram.webp",
     name: "Vikram",
     tagline: "Calm and precise. Explains the numbers properly.",
     style: "lattice",
@@ -88,6 +96,7 @@ export const AVATARS: AvatarPreset[] = [
   },
   {
     id: "tara",
+    portrait: "/portraits/tara.webp",
     name: "Tara",
     tagline: "Gentle and unhurried. Made for older users.",
     style: "aurora",
@@ -99,6 +108,7 @@ export const AVATARS: AvatarPreset[] = [
   },
   {
     id: "pip",
+    portrait: "/portraits/pip.webp",
     name: "Pip",
     tagline: "Simple and friendly. Made for children.",
     style: "bloom",
@@ -110,6 +120,7 @@ export const AVATARS: AvatarPreset[] = [
   },
   {
     id: "kiran",
+    portrait: "/portraits/kiran.webp",
     name: "Kiran",
     tagline: "Everyday Indian English. Comfortable with Indian names.",
     style: "wave",
@@ -121,6 +132,7 @@ export const AVATARS: AvatarPreset[] = [
   },
   {
     id: "nova",
+    portrait: "/portraits/nova.webp",
     name: "Nova",
     tagline: "Brisk and to the point. Minimal small talk.",
     style: "prism",
