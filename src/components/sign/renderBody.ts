@@ -310,7 +310,7 @@ function drawHead(
   // important non-manual marker in the language becomes invisible while
   // still technically being rendered.
   ctx.beginPath();
-  ctx.ellipse(0, -r * 0.46, r * 0.94, r * 0.5, 0, Math.PI, Math.PI * 2);
+  ctx.ellipse(0, -r * 0.52, r * 0.94, r * 0.46, 0, Math.PI, Math.PI * 2);
   ctx.fillStyle = theme.ink;
   ctx.fill();
 
@@ -346,14 +346,31 @@ function drawHead(
    * toward the hairline and very little room to go down before it sits on
    * the eye.
    */
-  const browLift = face.brows > 0 ? -face.brows * r * 0.17 : -face.brows * r * 0.07;
+  const browLift = face.brows > 0 ? -face.brows * r * 0.16 : -face.brows * r * 0.07;
   const browTilt = face.brows < 0 ? -face.brows * r * 0.13 : 0;
+  // Raised brows arch; furrowed brows stay straight and angle inward.
+  //
+  // Height alone is a couple of pixels at this size and reads as the same
+  // flat line moved slightly. The wh-marker was legible where the yes/no one
+  // was not precisely because angling changes the *shape*, and shape is what
+  // the eye picks up. So the raise gets a shape of its own too, which is
+  // also what a real raised brow does.
+  const arch = Math.max(0, face.brows) * r * 0.15;
   ctx.strokeStyle = theme.ink;
   ctx.lineWidth = r * 0.085;
   for (const sign of [-1, 1]) {
+    const outerX = sign * (eyeX + r * 0.2) + shift;
+    const outerY = eyeY - r * 0.26 + browLift;
+    const innerX = sign * (eyeX - r * 0.14) + shift;
+    const innerY = eyeY - r * 0.3 + browLift + browTilt;
     ctx.beginPath();
-    ctx.moveTo(sign * (eyeX + r * 0.2) + shift, eyeY - r * 0.26 + browLift);
-    ctx.lineTo(sign * (eyeX - r * 0.14) + shift, eyeY - r * 0.3 + browLift + browTilt);
+    ctx.moveTo(outerX, outerY);
+    ctx.quadraticCurveTo(
+      (outerX + innerX) / 2,
+      (outerY + innerY) / 2 - arch,
+      innerX,
+      innerY,
+    );
     ctx.stroke();
   }
 
