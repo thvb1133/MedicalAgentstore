@@ -55,7 +55,7 @@ npm test              # 292 tests against synthetic signals with known ground tr
 npm run typecheck
 npm run lint
 npm run build
-npm run verify:browser  # 80 checks in a real Chrome; needs the dev server running
+npm run verify:browser  # 82 checks in a real Chrome; needs the dev server running
 ```
 
 `verify:browser` covers what the unit tests structurally cannot. It serves the

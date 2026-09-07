@@ -493,6 +493,73 @@ async function main() {
       `widest span ${Math.max(...spreads)}px`,
     );
     /*
+     * Fingerspelling has to survive being chained after signs.
+     *
+     * The state is unit-tested, but what was doubted is the render: whether
+     * the hand actually comes up to the spelling position mid-sentence rather
+     * than hanging at the side while the label claims otherwise.
+     */
+    await page.evaluate(() => {
+      const box = document.querySelector("textarea");
+      const setter = Object.getOwnPropertyDescriptor(
+        window.HTMLTextAreaElement.prototype,
+        "value",
+      ).set;
+      setter.call(box, "Your heart rate is 72.");
+      box.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await new Promise((r) => setTimeout(r, 300));
+    const spellRender = await page.evaluate(async () => {
+      const canvas = document.querySelector("canvas");
+      const ctx = canvas.getContext("2d");
+      const dpr = canvas.width / canvas.clientWidth;
+      const unit = Math.min(canvas.clientWidth / 2.5, canvas.clientHeight / 2.9);
+      const originY = canvas.clientHeight * 0.56;
+      const gloss = () =>
+        canvas.parentElement.querySelector("span[style]")?.textContent ?? "";
+      const spelling = [];
+      const idle = [];
+      const started = performance.now();
+      await new Promise((resolve) => {
+        const tick = () => {
+          const d = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+          const w = canvas.width;
+          let sum = 0;
+          let n = 0;
+          for (let i = 0; i < d.length; i += 4) {
+            if ((i / 4) % w > w / 2) continue;
+            const [r0, g0, b0] = [d[i], d[i + 1], d[i + 2]];
+            if (d[i + 3] > 40 && r0 > 140 && r0 < 240 && g0 > 90 && g0 < 190 && r0 - b0 > 40) {
+              sum += Math.floor(i / 4 / w);
+              n++;
+            }
+          }
+          if (n > 0) {
+            const y = (sum / n / dpr - originY) / unit;
+            const label = gloss();
+            if (/spelling/i.test(label)) spelling.push(y);
+            else if (label === "·") idle.push(y);
+          }
+          if (performance.now() - started < 9000) requestAnimationFrame(tick);
+          else resolve();
+        };
+        requestAnimationFrame(tick);
+      });
+      const mean = (a) => a.reduce((x, y) => x + y, 0) / Math.max(1, a.length);
+      return { frames: spelling.length, spelling: mean(spelling), idle: mean(idle) };
+    });
+    record(
+      "fingerspelling still happens when chained after signs",
+      spellRender.frames > 20,
+      `${spellRender.frames} frames spelling`,
+    );
+    record(
+      "the spelling hand comes up rather than hanging at the side",
+      spellRender.spelling < spellRender.idle - 0.1,
+      `${spellRender.spelling.toFixed(2)} vs ${spellRender.idle.toFixed(2)} body units`,
+    );
+
+    /*
      * The brows carry grammar, so measure them rather than trusting them.
      *
      * They were once drawn at a height that put a raised brow underneath the
