@@ -1,17 +1,31 @@
 @import "tailwindcss";
 
 /*
- * Sanjivani Setu — dark clinical instrument theme.
+ * Sanjivani Setu — two themes, night and morning.
  *
- * The palette is deliberately restrained: a near-black field so the camera
- * preview and the pulse trace carry the visual weight, one saffron accent
- * drawn from the name, and a strict semantic set for measurement states.
- * Colour is never the only carrier of meaning — every state also has a label,
- * because a red-green quality indicator alone fails for colour-blind users
- * and reads badly on a projector.
+ * The palette is deliberately restrained: one saffron accent drawn from the
+ * name, and a strict semantic set for measurement states. Colour is never the
+ * only carrier of meaning — every state also has a label, because a red-green
+ * quality indicator alone fails for colour-blind users and reads badly on a
+ * projector.
+ *
+ * Night is the default because the camera preview and the pulse trace carry
+ * the visual weight and both read better against a dark field. Morning exists
+ * because a dark interface is genuinely harder for a good many people to
+ * read — particularly older eyes and anyone with astigmatism, for whom light
+ * text on dark backgrounds smears — and because these pages get used in
+ * daylight next to a window.
+ *
+ * Morning is not the dark palette inverted. Shadow does the separating work
+ * in a light interface where borders do it in a dark one, and the accents are
+ * darkened because a colour that reads as bright against near-black turns
+ * illegible against white.
  */
 
-:root {
+:root,
+[data-theme="night"] {
+  color-scheme: dark;
+
   --background: #07090d;
   --surface: #0e1219;
   --surface-raised: #151b25;
@@ -32,7 +46,46 @@
   --bad: #f87171;
   --info: #60a5fa;
 
+  --panel-shadow: none;
+  --header-bg: #07090dcc;
+  --body-wash:
+    radial-gradient(1100px 600px at 12% -8%, #14203055 0%, transparent 62%),
+    radial-gradient(900px 500px at 100% 0%, #2a1b0d44 0%, transparent 55%);
+  --scrollbar-thumb: #26303f;
+
   --radius: 14px;
+}
+
+[data-theme="morning"] {
+  color-scheme: light;
+
+  --background: #f6f7f9;
+  --surface: #ffffff;
+  --surface-raised: #f2f4f7;
+  --border: #e2e6ec;
+  --border-strong: #c3cad6;
+
+  --foreground: #131820;
+  --muted: #5a6675;
+  --faint: #8a94a3;
+
+  /* Darkened until it clears 4.5:1 on white; the night saffron does not. */
+  --accent: #b26612;
+  --accent-strong: #8f4f08;
+  --accent-dim: #b2661214;
+
+  --good: #15803d;
+  --fair: #a16207;
+  --poor: #c2410c;
+  --bad: #b91c1c;
+  --info: #1d4ed8;
+
+  --panel-shadow: 0 1px 2px #0f172a0a, 0 1px 3px #0f172a0f;
+  --header-bg: #f6f7f9d9;
+  --body-wash:
+    radial-gradient(1100px 600px at 12% -8%, #e8eef7 0%, transparent 62%),
+    radial-gradient(900px 500px at 100% 0%, #fdf3e6 0%, transparent 55%);
+  --scrollbar-thumb: #cdd4de;
 }
 
 @theme inline {
@@ -59,14 +112,23 @@
 }
 
 body {
-  background:
-    radial-gradient(1100px 600px at 12% -8%, #14203055 0%, transparent 62%),
-    radial-gradient(900px 500px at 100% 0%, #2a1b0d44 0%, transparent 55%),
-    var(--background);
+  background: var(--body-wash), var(--background);
   background-attachment: fixed;
   color: var(--foreground);
   font-family: var(--font-sans), system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
+}
+
+/*
+ * Suppress transitions while the theme attribute changes.
+ *
+ * Without this, switching themes animates every colour on the page
+ * independently and the result is a smear rather than a switch. The class is
+ * added, the attribute flipped, and the class removed on the next frame.
+ */
+.theme-switching,
+.theme-switching * {
+  transition: none !important;
 }
 
 /* Numbers in a measurement UI must not reflow as digits change. */
@@ -79,6 +141,7 @@ body {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
+  box-shadow: var(--panel-shadow);
 }
 
 .panel-raised {
@@ -123,8 +186,8 @@ body {
   background: linear-gradient(
     90deg,
     transparent 0%,
-    #ffffff0f 45%,
-    #ffffff0f 55%,
+    var(--border-strong) 45%,
+    var(--border-strong) 55%,
     transparent 100%
   );
   background-size: 180% 100%;
@@ -143,7 +206,7 @@ body {
   height: 10px;
 }
 ::-webkit-scrollbar-thumb {
-  background: #26303f;
+  background: var(--scrollbar-thumb);
   border-radius: 8px;
 }
 ::-webkit-scrollbar-track {
