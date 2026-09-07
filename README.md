@@ -49,11 +49,17 @@ npm run dev
 Open <http://localhost:3000>. Camera access requires `localhost` or HTTPS.
 
 ```bash
-npm test          # 48 tests against synthetic signals
+npm test              # 48 tests against synthetic signals with known ground truth
 npm run typecheck
 npm run lint
 npm run build
+npm run verify:browser  # 19 checks in a real Chrome; needs the dev server running
 ```
+
+`verify:browser` covers what the unit tests structurally cannot: that the WASM
+runtime and task models are served from our own origin, that the face
+landmarker initialises and its detection loop runs, and that with a faceless
+video the app reports nothing rather than inventing a plausible number.
 
 `fetch-models` copies the MediaPipe WASM runtime out of `node_modules` and downloads the three `.task` models into `public/mediapipe`. If you skip it the app falls back to the Google CDN, but running it means a venue's wifi failing cannot take your demo down.
 

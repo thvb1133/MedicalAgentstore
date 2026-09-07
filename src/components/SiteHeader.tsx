@@ -25,7 +25,8 @@ export function Wordmark({ className = "" }: { className?: string }) {
         <span className="text-[15px] font-semibold tracking-tight text-[var(--foreground)]">
           Sanjivani Setu
         </span>
-        <span className="mt-0.5 text-[10px] uppercase tracking-[0.16em] text-[var(--faint)]">
+        {/* No letter-spacing here: tracking breaks Devanagari conjunct forms. */}
+        <span lang="hi" className="mt-1 text-[11px] leading-none text-[var(--faint)]">
           संजीवनी सेतु
         </span>
       </span>
