@@ -100,42 +100,85 @@ function drawOrb(args: DrawArgs) {
   drawCore(args);
 }
 
+/**
+ * Three thick, widely separated arcs.
+ *
+ * The gaps have to be large. An arc of much more than half a turn reads as a
+ * circle at preview size, which would make this indistinguishable from the
+ * orb — the failure the whole set of distinct silhouettes exists to avoid.
+ */
 function drawAurora(args: DrawArgs) {
   const { ctx, cx, cy, r, palette, elapsed, status, reduceMotion } = args;
   const drift = reduceMotion ? 0 : elapsed * (status === "thinking" ? 0.9 : 0.25);
-  for (let i = 0; i < 5; i++) {
-    const radius = r * (1.15 + i * 0.33);
-    const arc = Math.PI * (0.55 + i * 0.12);
-    const start = drift * (i % 2 === 0 ? 1 : -1) + i * 1.3;
+  for (let i = 0; i < 3; i++) {
+    const radius = r * (1.25 + i * 0.5);
+    const arc = Math.PI * 0.5;
+    const start = drift * (i % 2 === 0 ? 1 : -1) + i * 2.1;
     ctx.beginPath();
     ctx.arc(cx, cy, radius, start, start + arc);
     ctx.strokeStyle = palette.ring;
-    ctx.globalAlpha = 0.5 - i * 0.08;
-    ctx.lineWidth = 3.5 - i * 0.5;
+    ctx.globalAlpha = 0.85 - i * 0.18;
+    ctx.lineWidth = Math.max(3, r * 0.22) - i * 0.6;
     ctx.lineCap = "round";
     ctx.stroke();
   }
   ctx.globalAlpha = 1;
-  drawCore({ ...args, r: r * 0.72 });
+  drawCore({ ...args, r: r * 0.62 });
 }
 
 function drawBloom(args: DrawArgs) {
   const { ctx, cx, cy, r, palette, elapsed, status, reduceMotion } = args;
-  const petals = 8;
+  const petals = 6;
   const spin = reduceMotion ? 0 : elapsed * (status === "thinking" ? 0.7 : 0.16);
   for (let i = 0; i < petals; i++) {
     const angle = spin + (i / petals) * Math.PI * 2;
-    const reach = r * (1.5 + (reduceMotion ? 0 : Math.sin(elapsed * 1.6 + i) * 0.12));
+    const reach = r * (1.45 + (reduceMotion ? 0 : Math.sin(elapsed * 1.6 + i) * 0.12));
     const px = cx + Math.cos(angle) * reach;
     const py = cy + Math.sin(angle) * reach;
     ctx.beginPath();
-    ctx.ellipse(px, py, r * 0.42, r * 0.24, angle, 0, Math.PI * 2);
+    ctx.ellipse(px, py, r * 0.72, r * 0.3, angle, 0, Math.PI * 2);
     ctx.fillStyle = palette.ring;
-    ctx.globalAlpha = 0.3;
+    ctx.globalAlpha = 0.6;
     ctx.fill();
   }
   ctx.globalAlpha = 1;
-  drawCore({ ...args, r: r * 0.82 });
+  drawCore({ ...args, r: r * 0.7 });
+}
+
+/** An upward triangle: the one silhouette in the set with no curve in it. */
+function drawPrism(args: DrawArgs) {
+  const { ctx, cx, cy, r, palette, elapsed, status, reduceMotion } = args;
+  const spin = reduceMotion ? 0 : elapsed * (status === "thinking" ? 0.8 : 0.2);
+
+  const triangle = (radius: number, rotation: number) => {
+    ctx.beginPath();
+    for (let i = 0; i < 3; i++) {
+      // Start at -90° so the point is up rather than to the right.
+      const angle = rotation - Math.PI / 2 + (i / 3) * Math.PI * 2;
+      const px = cx + Math.cos(angle) * radius;
+      const py = cy + Math.sin(angle) * radius;
+      if (i === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    }
+    ctx.closePath();
+  };
+
+  triangle(r * 2.05, spin * 0.5);
+  ctx.strokeStyle = palette.ring;
+  ctx.globalAlpha = 0.4;
+  ctx.lineWidth = Math.max(2, r * 0.1);
+  ctx.lineJoin = "round";
+  ctx.stroke();
+
+  triangle(r * 1.25, -spin);
+  const gradient = ctx.createLinearGradient(cx, cy - r, cx, cy + r);
+  gradient.addColorStop(0, "#ffffff");
+  gradient.addColorStop(0.45, palette.core);
+  gradient.addColorStop(1, palette.core);
+  ctx.fillStyle = gradient;
+  ctx.globalAlpha = 0.92;
+  ctx.fill();
+  ctx.globalAlpha = 1;
 }
 
 function drawWave(args: DrawArgs) {
@@ -184,16 +227,18 @@ function drawLattice(args: DrawArgs) {
     ctx.closePath();
   };
 
-  for (let i = 0; i < 3; i++) {
-    hexagon(r * (1.2 + i * 0.45), spin * (i % 2 === 0 ? 1 : -1));
-    ctx.strokeStyle = palette.ring;
-    ctx.globalAlpha = 0.32 - i * 0.08;
-    ctx.lineWidth = 1.6;
-    ctx.stroke();
-  }
+  // A single bold outline rather than a stack of thin ones. Concentric
+  // hexagons at preview size blur into concentric circles, which is exactly
+  // what this silhouette is supposed to be distinguishable from.
+  hexagon(r * 1.85, spin);
+  ctx.strokeStyle = palette.ring;
+  ctx.globalAlpha = 0.45;
+  ctx.lineWidth = Math.max(2, r * 0.11);
+  ctx.lineJoin = "round";
+  ctx.stroke();
   ctx.globalAlpha = 1;
 
-  hexagon(r * 0.85, spin);
+  hexagon(r * 1.05, -spin * 0.6);
   const gradient = ctx.createRadialGradient(cx, cy, r * 0.1, cx, cy, r);
   gradient.addColorStop(0, "#ffffff");
   gradient.addColorStop(0.4, palette.core);
@@ -210,6 +255,7 @@ const RENDERERS: Record<AvatarPreset["style"], (args: DrawArgs) => void> = {
   bloom: drawBloom,
   wave: drawWave,
   lattice: drawLattice,
+  prism: drawPrism,
 };
 
 export function AvatarPresence({
@@ -305,9 +351,14 @@ export function AvatarPresence({
 
       // The level ring doubles as proof the microphone is working, which is
       // the question people actually have when nothing seems to be happening.
-      // The wave style already shows level in its bars, and a ring around bars
-      // reads as a stray arc with nothing to belong to.
-      if (currentStatus === "listening" && currentAvatar.style !== "wave") {
+      // Only on the radially symmetric shapes. Around the bars or the
+      // triangle it reads as a stray arc with nothing to belong to, and both
+      // of those already scale with level anyway.
+      if (
+        currentStatus === "listening" &&
+        currentAvatar.style !== "wave" &&
+        currentAvatar.style !== "prism"
+      ) {
         const sweep = Math.PI * 2 * Math.min(1, smoothedLevel);
         ctx.beginPath();
         ctx.arc(cx, cy, radius * 2.1, -Math.PI / 2, -Math.PI / 2 + sweep);

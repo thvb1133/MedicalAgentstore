@@ -21,8 +21,16 @@
 
 import { VoiceOption, VOICES } from "./voices";
 
-/** How the presence is drawn. Each is a distinct silhouette, not a recolour. */
-export type AvatarStyle = "orb" | "aurora" | "bloom" | "wave" | "lattice";
+/**
+ * How the presence is drawn. Each is a distinct silhouette, not a recolour.
+ *
+ * There is one style per avatar, and that is a constraint rather than a
+ * coincidence: a picker where two options are the same shape in different
+ * colours is not really offering a choice. The shapes also have to survive
+ * being drawn at about ninety pixels in the picker grid, which rules out
+ * anything whose character lives in fine detail.
+ */
+export type AvatarStyle = "orb" | "aurora" | "bloom" | "wave" | "lattice" | "prism";
 
 /** Broad age bands, used only to order the presets sensibly. */
 export type AgeBand = "child" | "teen" | "adult" | "older";
@@ -115,7 +123,7 @@ export const AVATARS: AvatarPreset[] = [
     id: "nova",
     name: "Nova",
     tagline: "Brisk and to the point. Minimal small talk.",
-    style: "wave",
+    style: "prism",
     palette: { core: "#22d3ee", ring: "#67e8f9", glow: "#22d3ee26" },
     persona:
       "Be brisk and efficient. Skip pleasantries, answer what was asked, and stop. One short paragraph at most. Never pad a turn to seem friendlier.",
