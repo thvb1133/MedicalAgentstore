@@ -163,7 +163,7 @@ export function InterpretationPanel({ report, ready }: InterpretationPanelProps)
       {state === "streaming" && text === "" && (
         <div className="mt-4 space-y-2">
           {[100, 92, 78].map((w) => (
-            <div key={w} className="shimmer h-2.5 rounded bg-[#1b2431]" style={{ width: `${w}%` }} />
+            <div key={w} className="shimmer h-2.5 rounded bg-[var(--track)]" style={{ width: `${w}%` }} />
           ))}
         </div>
       )}

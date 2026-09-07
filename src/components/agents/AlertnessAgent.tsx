@@ -206,7 +206,7 @@ export function AlertnessAgent({ agent }: { agent: AgentDefinition }) {
               </span>
               <span className="text-xs text-[var(--muted)]">/100</span>
             </div>
-            <div className="mt-4 h-1.5 w-full overflow-hidden rounded-full bg-[#1b2431]">
+            <div className="mt-4 h-1.5 w-full overflow-hidden rounded-full bg-[var(--track)]">
               <div
                 className="h-full rounded-full transition-all duration-500"
                 style={{

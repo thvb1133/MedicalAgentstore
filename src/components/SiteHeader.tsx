@@ -1,5 +1,7 @@
 import Link from "next/link";
 
+import { ThemeToggle } from "./ThemeToggle";
+
 export function Wordmark({ className = "" }: { className?: string }) {
   return (
     <Link href="/" className={`group flex items-center gap-2.5 ${className}`}>
@@ -38,19 +40,11 @@ const NAV = [
   { href: "/", label: "Checks" },
   { href: "/appointments", label: "Appointments" },
   { href: "/history", label: "History" },
+  { href: "/sign", label: "Fingerspelling" },
 ];
-
-/**
- * The header navigation.
- *
- * Deliberately three items. Everything this does falls into one of three
- * questions — what can I measure, when am I next doing it, and what has it
- * said before — and a fourth entry would mean one of them was not really a
- * top-level thing.
- */
 export function SiteHeader({ children }: { children?: React.ReactNode }) {
   return (
-    <header className="sticky top-0 z-40 border-b border-[var(--border)] bg-[#07090dcc] backdrop-blur-xl">
+    <header className="sticky top-0 z-40 border-b border-[var(--border)] bg-[var(--header-bg)] backdrop-blur-xl">
       <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-4 px-5">
         <div className="flex items-center gap-6">
           <Wordmark />
@@ -66,7 +60,10 @@ export function SiteHeader({ children }: { children?: React.ReactNode }) {
             ))}
           </nav>
         </div>
-        <div className="flex items-center gap-3">{children}</div>
+        <div className="flex items-center gap-3">
+          {children}
+          <ThemeToggle />
+        </div>
       </div>
     </header>
   );

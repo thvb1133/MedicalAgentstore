@@ -136,7 +136,7 @@ export function VitalsAgent({ agent }: { agent: AgentDefinition }) {
             hint={hint}
             overlay={
               running && (
-                <div className="absolute inset-x-0 bottom-0 h-0.5 bg-[#ffffff14]">
+                <div className="absolute inset-x-0 bottom-0 h-0.5 bg-[var(--track)]">
                   <div
                     className="h-full transition-[width] duration-300"
                     style={{
