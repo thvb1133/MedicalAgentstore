@@ -492,6 +492,77 @@ async function main() {
       Math.max(...spreads) > 0,
       `widest span ${Math.max(...spreads)}px`,
     );
+    /*
+     * The brows carry grammar, so measure them rather than trusting them.
+     *
+     * They were once drawn at a height that put a raised brow underneath the
+     * hair — dark on dark. The marking was applied, the tests passed, and the
+     * single most important non-manual marker in the language was invisible.
+     * Nothing short of reading the pixels catches that.
+     */
+    const brows = {};
+    for (const [label, sentence] of [
+      ["statement", "You feel tired."],
+      ["question", "Do you have pain?"],
+      ["wh", "How do you feel?"],
+    ]) {
+      await page.evaluate((text) => {
+        const box = document.querySelector("textarea");
+        const setter = Object.getOwnPropertyDescriptor(
+          window.HTMLTextAreaElement.prototype,
+          "value",
+        ).set;
+        setter.call(box, text);
+        box.dispatchEvent(new Event("input", { bubbles: true }));
+      }, sentence);
+      await new Promise((r) => setTimeout(r, 300));
+      brows[label] = await page.evaluate(async () => {
+        const canvas = document.querySelector("canvas");
+        const ctx = canvas.getContext("2d");
+        const dpr = canvas.width / canvas.clientWidth;
+        const unit = Math.min(canvas.clientWidth / 2.5, canvas.clientHeight / 2.9);
+        const cx = canvas.clientWidth / 2;
+        const cy = canvas.clientHeight * 0.56 - 1.02 * unit;
+        const r = 0.31 * unit;
+        // A band across the brows: below the hairline, above the eyes.
+        const x0 = Math.round((cx - r * 0.75) * dpr);
+        const x1 = Math.round((cx + r * 0.75) * dpr);
+        const y0 = Math.round((cy - r * 0.42) * dpr);
+        const y1 = Math.round((cy + r * 0.03) * dpr);
+        const rows = [];
+        const started = performance.now();
+        await new Promise((resolve) => {
+          const tick = () => {
+            const d = ctx.getImageData(x0, y0, x1 - x0, y1 - y0).data;
+            const width = x1 - x0;
+            let sum = 0;
+            let n = 0;
+            for (let i = 0; i < d.length; i += 4) {
+              if (d[i + 3] > 40 && d[i] < 70 && d[i + 1] < 70 && d[i + 2] < 80) {
+                sum += Math.floor(i / 4 / width);
+                n++;
+              }
+            }
+            if (n > 20) rows.push(sum / n);
+            if (performance.now() - started < 4000) requestAnimationFrame(tick);
+            else resolve();
+          };
+          requestAnimationFrame(tick);
+        });
+        return rows.reduce((a, b) => a + b, 0) / Math.max(1, rows.length);
+      });
+    }
+    record(
+      "a yes/no question visibly raises the brows",
+      brows.question < brows.statement - 1.5,
+      `question ${brows.question.toFixed(1)} vs statement ${brows.statement.toFixed(1)}`,
+    );
+    record(
+      "a wh-question visibly lowers them instead",
+      brows.wh > brows.statement + 1.5,
+      `wh ${brows.wh.toFixed(1)} vs statement ${brows.statement.toFixed(1)}`,
+    );
+
     record(
       "signing ran without console errors",
       consoleErrors.length === 0,

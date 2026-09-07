@@ -303,13 +303,18 @@ function drawHead(
   ctx.lineWidth = Math.max(1, unit * 0.014);
   ctx.stroke();
 
-  // Hair, as a simple cap. Enough to make the head read as a head.
+  // Hair, as a simple cap.
+  //
+  // The hairline has to clear the brows at their highest. Drawn lower, a
+  // raised brow lands on the hair — dark on dark — and the single most
+  // important non-manual marker in the language becomes invisible while
+  // still technically being rendered.
   ctx.beginPath();
-  ctx.ellipse(0, -r * 0.34, r * 0.94, r * 0.62, 0, Math.PI, Math.PI * 2);
+  ctx.ellipse(0, -r * 0.46, r * 0.94, r * 0.5, 0, Math.PI, Math.PI * 2);
   ctx.fillStyle = theme.ink;
   ctx.fill();
 
-  const eyeY = r * 0.06;
+  const eyeY = r * 0.1;
   const eyeX = r * 0.36;
   // The head turn shifts the features, which is what sells a shake at this
   // level of detail far better than rotating the whole ellipse.
@@ -330,16 +335,25 @@ function drawHead(
     ctx.fill();
   }
 
-  // Brows. Height carries raised versus neutral; the inner-end tilt carries
-  // the drawn-together shape of a wh-question.
-  const browLift = -face.brows * r * 0.14;
-  const browTilt = face.brows < 0 ? -face.brows * r * 0.1 : 0;
+  /*
+   * Brows.
+   *
+   * Height carries raised versus neutral; the inner-end tilt carries the
+   * drawn-together shape of a wh-question. Both directions are grammar in
+   * ASL rather than mood, so they have to be legible at this size.
+   *
+   * Raising travels further than furrowing, because a brow has room to go up
+   * toward the hairline and very little room to go down before it sits on
+   * the eye.
+   */
+  const browLift = face.brows > 0 ? -face.brows * r * 0.17 : -face.brows * r * 0.07;
+  const browTilt = face.brows < 0 ? -face.brows * r * 0.13 : 0;
   ctx.strokeStyle = theme.ink;
-  ctx.lineWidth = r * 0.075;
+  ctx.lineWidth = r * 0.085;
   for (const sign of [-1, 1]) {
     ctx.beginPath();
-    ctx.moveTo(sign * (eyeX + r * 0.19) + shift, eyeY - r * 0.3 + browLift);
-    ctx.lineTo(sign * (eyeX - r * 0.13) + shift, eyeY - r * 0.34 + browLift + browTilt);
+    ctx.moveTo(sign * (eyeX + r * 0.2) + shift, eyeY - r * 0.26 + browLift);
+    ctx.lineTo(sign * (eyeX - r * 0.14) + shift, eyeY - r * 0.3 + browLift + browTilt);
     ctx.stroke();
   }
 
