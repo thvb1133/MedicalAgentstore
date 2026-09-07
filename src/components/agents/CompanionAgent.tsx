@@ -6,6 +6,9 @@ import { AvatarPresence } from "@/components/AvatarPresence";
 import { CameraStage } from "@/components/CameraStage";
 import { CaptionBar } from "@/components/CaptionBar";
 import { CompanionSettings } from "@/components/avatar/CompanionSettings";
+import { SignAvatar } from "@/components/sign/SignAvatar";
+import { SKIN_TONES } from "@/components/sign/render";
+import { spellableTerms } from "@/lib/sign/schedule";
 import { MetricTile } from "@/components/MetricTile";
 import { QualityMeter } from "@/components/QualityMeter";
 import { SafetyNotice } from "@/components/SafetyNotice";
@@ -109,6 +112,7 @@ export function CompanionAgent({ agent }: { agent: AgentDefinition }) {
     voiceId: profile.voiceId,
     speechRate: profile.speechRate,
     persona: personaInstructions(profile),
+    languageCode: profile.languageCode,
   });
 
   const { onTurnEnd, status: conversationStatus } = conversation;
@@ -203,6 +207,14 @@ export function CompanionAgent({ agent }: { agent: AgentDefinition }) {
     }
     return "";
   }, [conversation.turns]);
+
+  const spelled = useMemo(
+    () => (profile.fingerspelling ? spellableTerms(lastAssistantText).join(" ") : ""),
+    [profile.fingerspelling, lastAssistantText],
+  );
+
+  const signTone =
+    SKIN_TONES.find((t) => t.id === profile.signTone)?.tone ?? SKIN_TONES[1].tone;
 
   const claudeMissing = servicesLoaded && !services.claude;
   const pollyMissing = servicesLoaded && !services.polly;
@@ -330,6 +342,27 @@ export function CompanionAgent({ agent }: { agent: AgentDefinition }) {
             text={conversation.partial || lastAssistantText}
             accent={accent}
           />
+
+          {/*
+            Only the numbers and names get spelled, not the whole reply.
+
+            Fingerspelling a full sentence at two letters a second is slower
+            than reading the caption that is already on screen, so it would be
+            a worse way to receive the same information. What it is genuinely
+            good for is the parts a caption handles worst — a measurement, a
+            drug name, a person's name — which is also what signers
+            fingerspell in ordinary conversation.
+          */}
+          {profile.fingerspelling && spelled && (
+            <SignAvatar
+              text={spelled}
+              accent={accent}
+              tone={signTone}
+              rate={2.2}
+              height={200}
+              loop
+            />
+          )}
 
           <div className="panel flex flex-1 flex-col p-4">
           <div className="flex items-center justify-between">

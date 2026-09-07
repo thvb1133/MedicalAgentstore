@@ -11,12 +11,15 @@ import {
   type AgeBand,
   type AvatarPreset,
 } from "@/lib/avatar/presets";
+import { SKIN_TONES } from "@/components/sign/render";
+import { LANGUAGES, languageOr } from "@/lib/avatar/languages";
 import type { CaptionMode, CompanionProfile } from "@/lib/avatar/profile";
 import {
   clampRate,
   describeRate,
   RATE_MAX,
   RATE_MIN,
+  voiceForLanguage,
   type VoiceOption,
 } from "@/lib/avatar/voices";
 
@@ -56,7 +59,8 @@ export function CompanionSettings({
 
   const avatar = avatarOr(profile.avatarId);
   const avatars = avatarsForAge(profile.ageBand);
-  const voices = voicesForAge(profile.ageBand);
+  const voices = voicesForAge(profile.ageBand, profile.languageCode);
+  const language = languageOr(profile.languageCode);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -102,7 +106,7 @@ export function CompanionSettings({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           text: PREVIEW_LINE,
-          voice: voice.id,
+          voice: voice.polly ?? voice.id,
           rate: profile.speechRate,
         }),
       });
@@ -226,7 +230,44 @@ export function CompanionSettings({
           </Section>
 
           <Section
-            title="Voice"
+            title="Language"
+            detail="What you speak, and what the companion answers in. Changing this also changes which voices are available."
+          >
+            <div className="flex flex-wrap gap-1.5">
+              {LANGUAGES.map((option) => {
+                const selected = option.code === profile.languageCode;
+                return (
+                  <Choice
+                    key={option.code}
+                    selected={selected}
+                    onClick={() =>
+                      set({
+                        languageCode: option.code,
+                        // A voice cannot follow the language across; it would
+                        // read the new one with the wrong phonology.
+                        voiceId: voiceForLanguage(option.code, profile.voiceId),
+                      })
+                    }
+                    accent={avatar.palette.core}
+                  >
+                    <span className="font-medium">{option.endonym}</span>
+                    {option.endonym !== option.name && (
+                      <span className="ml-1.5 text-[var(--faint)]">{option.name}</span>
+                    )}
+                  </Choice>
+                );
+              })}
+            </div>
+            <p className="mt-2.5 text-[11.5px] leading-relaxed text-[var(--muted)]">
+              Someone describing chest pain reaches for the words they learned
+              as a child. Measurements stay as digits and standard units in
+              every language, because those are what a clinician will ask you
+              to repeat.
+            </p>
+          </Section>
+
+          <Section
+            title={`Voice — ${language.endonym}`}
             detail={
               speechAvailable
                 ? "Press play to hear each one before you choose."
@@ -345,33 +386,58 @@ export function CompanionSettings({
             </div>
 
             {/*
-              An honest note rather than a feature.
+              Fingerspelling is offered as what it is and nothing more.
 
-              A signing avatar is not a rendering problem, it is a linguistics
-              problem: BSL, ASL and ISL are separate languages with their own
-              grammar, and meaning lives in facial expression, body shift and
-              the space in front of the signer as much as in the hands. What is
-              cheap to build is an avatar that fingerspells English letter by
-              letter, and shipping that under the word "sign language" would be
-              a claim of access we cannot honour — a Deaf user would find it
-              slow, wrong, and a fair sign that nobody involved asked one.
+              A signing avatar is a linguistics problem, not a rendering one:
+              BSL, ASL and ISL are separate languages whose grammar lives in
+              facial expression, body shift and the space in front of the
+              signer as much as in the hands. That is not built without Deaf
+              signers in the room. The manual alphabet is a different and much
+              smaller thing, it is genuinely what signers use for names,
+              numbers and medical terms, and it can be done properly — so it
+              is here, under its own name.
             */}
-            <div
-              className="mt-3 rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] p-3"
-            >
-              <div className="text-[12px] font-medium text-[var(--foreground)]">
-                About sign language
-              </div>
-              <p className="mt-1.5 text-[11.5px] leading-relaxed text-[var(--muted)]">
-                The avatar does not sign, and it would be wrong of us to say
-                otherwise. BSL, ASL and ISL are full languages with their own
-                grammar, carried as much by facial expression and body position
-                as by the hands — an avatar that spelled English out letter by
-                letter would be slow, wrong, and not sign language at all.
-                Doing it properly needs a motion-captured signing avatar built
-                and checked with Deaf signers. Until then this gives you full
-                captions, typing as a first-class way in, and a visible cue
-                everywhere there would otherwise be only a sound.
+            <div className="mt-3 rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] p-3">
+              <Toggle
+                label="Fingerspell numbers and names"
+                detail="A drawn hand spells the measurements and names out of each reply, next to the caption."
+                checked={profile.fingerspelling}
+                onChange={(v) => set({ fingerspelling: v })}
+                accent={avatar.palette.core}
+              />
+
+              {profile.fingerspelling && (
+                <div className="mt-3 flex items-center gap-3 border-t border-[var(--border)] pt-3">
+                  <span className="text-[11.5px] text-[var(--muted)]">Skin tone</span>
+                  {SKIN_TONES.map((option) => (
+                    <button
+                      key={option.id}
+                      onClick={() => set({ signTone: option.id })}
+                      aria-pressed={profile.signTone === option.id}
+                      aria-label={option.label}
+                      className="h-7 w-7 rounded-full border-2 transition-transform hover:scale-105"
+                      style={{
+                        background: option.tone.base,
+                        borderColor:
+                          profile.signTone === option.id ? "var(--foreground)" : "transparent",
+                      }}
+                    />
+                  ))}
+                </div>
+              )}
+
+              <p className="mt-3 border-t border-[var(--border)] pt-3 text-[11.5px] leading-relaxed text-[var(--muted)]">
+                This is the ASL manual alphabet, not sign language. ASL, BSL
+                and ISL are full languages whose grammar lives in movement,
+                facial expression and the space in front of the signer, and a
+                single drawn hand cannot produce any of it — calling this
+                signing would be a promise of access we could not keep. What
+                fingerspelling genuinely carries is names, numbers and medical
+                terms, which is what it is used for here.{" "}
+                <a href="/sign" className="underline underline-offset-2 hover:text-[var(--foreground)]">
+                  See the full alphabet
+                </a>
+                .
               </p>
             </div>
 

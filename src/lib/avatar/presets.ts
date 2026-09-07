@@ -149,15 +149,23 @@ export function avatarsForAge(band: AgeBand): AvatarPreset[] {
   return [...suited, ...rest];
 }
 
-/** Voices offered first for an age band. */
-export function voicesForAge(band: AgeBand): VoiceOption[] {
+/**
+ * Voices for a language, ordered by what suits an age band.
+ *
+ * Language filters rather than sorts. A voice trained on English reading
+ * Hindi does not sound like an accent, it sounds like a fault, so offering
+ * the wrong-language voices further down the list would only invite someone
+ * to pick one.
+ */
+export function voicesForAge(band: AgeBand, language: string): VoiceOption[] {
+  const available = VOICES.filter((v) => v.language === language);
   if (band === "child") {
-    return [...VOICES.filter((v) => v.child), ...VOICES.filter((v) => !v.child)];
+    return [...available.filter((v) => v.child), ...available.filter((v) => !v.child)];
   }
   if (band === "older") {
-    return [...VOICES.filter((v) => v.clear), ...VOICES.filter((v) => !v.clear)];
+    return [...available.filter((v) => v.clear), ...available.filter((v) => !v.clear)];
   }
-  return VOICES;
+  return available;
 }
 
 export const AGE_BANDS: Array<{ id: AgeBand; label: string; detail: string }> = [

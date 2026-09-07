@@ -65,17 +65,36 @@ export async function POST(req: NextRequest) {
 
   const polly = new PollyClient(awsCredentials());
 
-  try {
-    const useSsml = rate !== 100;
-    const result = await polly.send(
+  const useSsml = rate !== 100;
+  const speak = (engine: "neural" | "standard") =>
+    polly.send(
       new SynthesizeSpeechCommand({
         Text: useSsml ? `<speak><prosody rate="${rate}%">${escapeSsml(text)}</prosody></speak>` : text,
         TextType: useSsml ? "ssml" : "text",
         OutputFormat: "mp3",
         VoiceId: voice as never,
-        Engine: "neural",
+        Engine: engine,
       }),
     );
+
+  try {
+    /**
+     * Neural first, standard as a fallback.
+     *
+     * Polly's neural coverage varies by language and changes over time, and a
+     * voice that has no neural model returns a hard error rather than quietly
+     * degrading. Falling back keeps a language working — a flatter voice is a
+     * far smaller problem than a companion that cannot speak at all to the
+     * person who chose that language.
+     */
+    let result;
+    try {
+      result = await speak("neural");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "";
+      if (!/engine|not supported|ValidationException/i.test(message)) throw err;
+      result = await speak("standard");
+    }
 
     if (!result.AudioStream) {
       return Response.json({ error: "Polly returned no audio." }, { status: 502 });

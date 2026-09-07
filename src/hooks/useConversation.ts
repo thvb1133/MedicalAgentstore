@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { pollyVoiceId } from "@/lib/avatar/voices";
 import type { ConversationTurn, LiveContext } from "@/lib/conversation";
 
 /**
@@ -47,6 +48,12 @@ export interface ConversationOptions {
    * accessibility settings. Appended below the safety rules, never above.
    */
   persona?: string;
+  /**
+   * BCP-47 tag for speech recognition. Recognising the wrong language does
+   * not degrade gracefully — it returns confident nonsense, which is worse
+   * than returning nothing.
+   */
+  languageCode?: string;
 }
 
 export interface ConversationState {
@@ -108,7 +115,14 @@ function getConstructor(): RecognitionCtor | null {
 }
 
 export function useConversation(options: ConversationOptions): ConversationState {
-  const { getContext, speechEnabled, voiceId, speechRate = 100, persona } = options;
+  const {
+    getContext,
+    speechEnabled,
+    voiceId,
+    speechRate = 100,
+    persona,
+    languageCode = "en-GB",
+  } = options;
 
   // Read at submission time so changing the avatar mid-conversation takes
   // effect on the next turn rather than being captured when the loop started.
@@ -154,7 +168,7 @@ export function useConversation(options: ConversationOptions): ConversationState
     }
 
     const recognition = new Ctor();
-    recognition.lang = "en-GB";
+    recognition.lang = languageCode;
     recognition.continuous = true;
     recognition.interimResults = true;
 
@@ -216,7 +230,7 @@ export function useConversation(options: ConversationOptions): ConversationState
       // Starting an already-started recogniser throws; harmless.
     }
     recognitionRef.current = recognition;
-  }, []);
+  }, [languageCode]);
 
   const stopRecognition = useCallback(() => {
     const recognition = recognitionRef.current;
@@ -238,7 +252,7 @@ export function useConversation(options: ConversationOptions): ConversationState
       const response = await fetch("/api/speak", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text, voice: voiceId, rate: speechRate }),
+        body: JSON.stringify({ text, voice: pollyVoiceId(voiceId ?? ""), rate: speechRate }),
       });
       if (!response.ok) throw new Error("Speech synthesis failed.");
 

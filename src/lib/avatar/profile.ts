@@ -13,8 +13,9 @@
  * default rather than propagating undefined into the interface.
  */
 
+import { DEFAULT_LANGUAGE, getLanguage, languageInstructions } from "./languages";
 import { avatarOr, DEFAULT_AVATAR_ID, getAvatar, type AgeBand } from "./presets";
-import { clampRate, getVoice, RATE_DEFAULT } from "./voices";
+import { clampRate, getVoice, RATE_DEFAULT, voiceForLanguage } from "./voices";
 
 /** How prominent the on-screen captions are. */
 export type CaptionMode = "off" | "on" | "large";
@@ -24,6 +25,11 @@ export interface CompanionProfile {
   displayName: string;
   ageBand: AgeBand;
   avatarId: string;
+  /**
+   * The language of the whole conversation: what the browser listens for,
+   * what Claude replies in, and which voices the picker offers.
+   */
+  languageCode: string;
   voiceId: string;
   /** Percentage of normal speaking rate. */
   speechRate: number;
@@ -38,6 +44,14 @@ export interface CompanionProfile {
   /** When false the reply is shown but never spoken. */
   speakReplies: boolean;
   /**
+   * Show a hand fingerspelling the numbers and names out of each reply,
+   * alongside the caption. Off by default: it is useful to a specific group
+   * of people and clutter to everyone else.
+   */
+  fingerspelling: boolean;
+  /** Which skin tone the drawn hand uses. */
+  signTone: string;
+  /**
    * Pseudonymous id used to file measurement history. Generated locally,
    * never tied to a name or an account.
    */
@@ -48,6 +62,7 @@ const STORAGE_KEY = "sanjivani-setu.companion-profile.v1";
 
 const AGE_BANDS: AgeBand[] = ["child", "teen", "adult", "older"];
 const CAPTION_MODES: CaptionMode[] = ["off", "on", "large"];
+const SIGN_TONES = ["light", "medium", "tan", "deep"];
 
 /** Constrained to what the history route will accept as a key segment. */
 export function generateProfileId(): string {
@@ -66,12 +81,15 @@ export function defaultProfile(): CompanionProfile {
     displayName: "",
     ageBand: "adult",
     avatarId: avatar.id,
+    languageCode: DEFAULT_LANGUAGE,
     voiceId: avatar.defaultVoiceId,
     speechRate: RATE_DEFAULT,
     captions: "on",
     accessMode: false,
     simpleLanguage: false,
     speakReplies: true,
+    fingerspelling: false,
+    signTone: "medium",
     profileId: generateProfileId(),
   };
 }
@@ -99,12 +117,28 @@ export function parseProfile(raw: unknown): CompanionProfile {
   // nothing selected and the presence with no palette.
   const avatarId = getAvatar(asString(p.avatarId, "")) ? (p.avatarId as string) : base.avatarId;
 
-  // Same for the voice, except the fallback is the chosen avatar's own voice
-  // rather than the global default, so a retired voice does not silently move
-  // the person to a completely different-sounding one.
-  const voiceId = getVoice(asString(p.voiceId, ""))
-    ? (p.voiceId as string)
-    : avatarOr(avatarId).defaultVoiceId;
+  const storedVoice = getVoice(asString(p.voiceId, ""));
+
+  /**
+   * Language, or the language of the stored voice.
+   *
+   * Profiles written before this setting existed have no language field, but
+   * they do have a voice, and the voice is the only record of what the person
+   * actually chose. Someone who picked an Indian English voice should come
+   * back to Indian English, not be reset to the default and have their voice
+   * taken away as a side effect.
+   */
+  const languageCode = getLanguage(asString(p.languageCode, ""))
+    ? (p.languageCode as string)
+    : (storedVoice?.language ?? base.languageCode);
+
+  // Beyond that migration the language wins. A voice reading text in a
+  // language it was not trained on applies the wrong phonology and comes out
+  // as noise, so a mismatch has to be resolved rather than carried forward.
+  const voiceId = voiceForLanguage(
+    languageCode,
+    storedVoice?.id ?? avatarOr(avatarId).defaultVoiceId,
+  );
 
   const captions = CAPTION_MODES.includes(p.captions as CaptionMode)
     ? (p.captions as CaptionMode)
@@ -119,6 +153,7 @@ export function parseProfile(raw: unknown): CompanionProfile {
     displayName: asString(p.displayName, base.displayName),
     ageBand,
     avatarId,
+    languageCode,
     voiceId,
     speechRate: clampRate(typeof p.speechRate === "number" ? p.speechRate : base.speechRate),
     // Access mode implies large captions. Letting someone turn on the access
@@ -128,6 +163,8 @@ export function parseProfile(raw: unknown): CompanionProfile {
     accessMode,
     simpleLanguage: asBoolean(p.simpleLanguage, base.simpleLanguage),
     speakReplies: asBoolean(p.speakReplies, base.speakReplies),
+    fingerspelling: asBoolean(p.fingerspelling, base.fingerspelling),
+    signTone: SIGN_TONES.includes(asString(p.signTone, "")) ? (p.signTone as string) : base.signTone,
     profileId,
   };
 }
@@ -168,6 +205,8 @@ export function personaInstructions(profile: CompanionProfile): string {
   const avatar = avatarOr(profile.avatarId);
   const lines: string[] = [`You are speaking as "${avatar.name}". ${avatar.persona}`];
 
+  lines.push(languageInstructions(profile.languageCode));
+
   if (profile.displayName.trim()) {
     lines.push(`The person prefers to be called ${profile.displayName.trim()}.`);
   }
@@ -185,6 +224,12 @@ export function personaInstructions(profile: CompanionProfile): string {
   if (profile.simpleLanguage) {
     lines.push(
       "Use plain language throughout: short sentences, everyday words, one idea per sentence. Aim for the reading level of a popular newspaper. Never use a clinical term without immediately saying what it means.",
+    );
+  }
+
+  if (profile.fingerspelling) {
+    lines.push(
+      "Numbers and names in your reply are also being fingerspelled on screen, one letter at a time, which is slow. Say each measurement once, as digits with its unit, rather than repeating it in words.",
     );
   }
 
