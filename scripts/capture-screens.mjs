@@ -45,9 +45,9 @@ const SHOTS = [
   { path: "/sign", name: "fingerspelling", wait: 2500, tab: 1 },
   { path: "/appointments", name: "appointments", wait: 1500, seed: "appointments" },
   { path: "/history", name: "history", wait: 2000, seed: "history" },
-  // The home page again in the light theme, since both are real palettes
+  // The home page again in the dark theme, since both are real palettes
   // rather than one inverted and a dark-only shot only shows half the work.
-  { path: "/", name: "home_morning", wait: 1500, theme: "morning" },
+  { path: "/", name: "home_night", wait: 1500, theme: "night" },
 ];
 
 /**
