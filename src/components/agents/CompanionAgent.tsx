@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { AvatarPresence } from "@/components/AvatarPresence";
+import { SwitchBoard } from "@/components/access/SwitchBoard";
 import { CameraStage } from "@/components/CameraStage";
 import { CaptionBar } from "@/components/CaptionBar";
 import { CompanionSettings } from "@/components/avatar/CompanionSettings";
@@ -24,8 +25,15 @@ import { useFaceTracking, type FaceFrame } from "@/hooks/useFaceTracking";
 import { useServices } from "@/hooks/useServices";
 import { useVitals } from "@/hooks/useVitals";
 import { useVoiceBiomarkers } from "@/hooks/useVoiceBiomarkers";
+import {
+  QUICK_REPLIES,
+  SwitchInput,
+  type SwitchMode,
+  type SwitchState,
+} from "@/lib/access/switch";
 import type { AgentDefinition } from "@/lib/agents/registry";
 import { avatarOr } from "@/lib/avatar/presets";
+import { FACE_POINTS, eyeAspectRatio, horizontalGaze } from "@/lib/vision/faceRegions";
 import { personaInstructions } from "@/lib/avatar/profile";
 import type { LiveContext } from "@/lib/conversation";
 import { addLocalReport } from "@/lib/history";
@@ -56,7 +64,59 @@ export function CompanionAgent({ agent }: { agent: AgentDefinition }) {
   const { snapshot, pushFrame, reset: resetVitals } = useVitals({
     windowSeconds: WINDOW_SECONDS,
   });
-  const handleFrame = useCallback((frame: FaceFrame) => pushFrame(frame), [pushFrame]);
+  /**
+   * The eye switch runs off the frames the vitals engine is already getting.
+   *
+   * That is the whole argument for it: the landmarks needed to work out
+   * whether someone's eyes are shut are the same ones already on screen for
+   * the health measures, so the accessibility path costs one more function
+   * call per frame rather than a second camera pass.
+   */
+  const switchRef = useRef(new SwitchInput());
+  const switchSendRef = useRef<((text: string) => void) | null>(null);
+  const switchOnRef = useRef(false);
+  const switchPaintedAt = useRef(0);
+  const [switchMode, setSwitchMode] = useState<SwitchMode>("scan");
+  const [switchState, setSwitchState] = useState<SwitchState>({
+    focus: 0,
+    progress: 0,
+    holding: false,
+    chosen: null,
+    ready: false,
+    prompt: "Look at the screen with your eyes open",
+  });
+
+  const handleFrame = useCallback(
+    (frame: FaceFrame) => {
+      pushFrame(frame);
+      if (!switchOnRef.current) return;
+
+      const lm = frame.landmarks;
+      const state = switchRef.current.push({
+        timestampMs: frame.timestampMs,
+        ear: lm
+          ? (eyeAspectRatio(lm, FACE_POINTS.leftEye) +
+              eyeAspectRatio(lm, FACE_POINTS.rightEye)) /
+            2
+          : null,
+        gazeX: lm ? horizontalGaze(lm) : null,
+      });
+
+      if (state.chosen) {
+        switchSendRef.current?.(state.chosen.label);
+        setSwitchState(state);
+        switchPaintedAt.current = frame.timestampMs;
+        return;
+      }
+      // A dwell ring redrawn ten times a second looks identical to one
+      // redrawn thirty times, and this component is expensive to re-render.
+      if (frame.timestampMs - switchPaintedAt.current < 100) return;
+      switchPaintedAt.current = frame.timestampMs;
+      setSwitchState(state);
+    },
+    [pushFrame],
+  );
+
   const tracking = useFaceTracking(videoRef, running && camera.status === "ready", handleFrame);
 
   /**
@@ -130,10 +190,18 @@ export function CompanionAgent({ agent }: { agent: AgentDefinition }) {
   });
 
   voiceRef.current = voice.analysis;
+  switchSendRef.current = conversation.sendText;
+  switchOnRef.current = running && profile.accessMode;
+
+  useEffect(() => {
+    switchRef.current.setOptions(QUICK_REPLIES);
+    switchRef.current.configure({ mode: switchMode });
+  }, [switchMode]);
 
   const start = useCallback(async () => {
     startedAtRef.current = performance.now();
     resetVitals();
+    switchRef.current.reset();
     setSaved(false);
     setRunning(true);
     await voice.start();
@@ -384,6 +452,22 @@ export function CompanionAgent({ agent }: { agent: AgentDefinition }) {
             Either way the caption stays. Neither of these is interpretation
             and neither should be the only way the reply is available.
           */}
+          {/*
+            In access mode the eyes are an input device as well as something
+            being measured. Someone who can neither speak nor type can still
+            answer yes, ask for a repeat, or call for help — from the same
+            camera pass that is reading their pulse.
+          */}
+          {profile.accessMode && running && (
+            <SwitchBoard
+              options={QUICK_REPLIES}
+              state={switchState}
+              mode={switchMode}
+              onModeChange={setSwitchMode}
+              accent={accent}
+            />
+          )}
+
           {profile.signMode === "sign" && lastAssistantText && (
             <SigningAvatar
               text={lastAssistantText}
