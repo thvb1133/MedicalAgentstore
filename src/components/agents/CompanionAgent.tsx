@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { AvatarPresence } from "@/components/AvatarPresence";
 import { SwitchBoard } from "@/components/access/SwitchBoard";
+import { AffectPanel } from "@/components/affect/AffectPanel";
 import { CameraStage } from "@/components/CameraStage";
 import { CaptionBar } from "@/components/CaptionBar";
 import { CompanionSettings } from "@/components/avatar/CompanionSettings";
@@ -25,6 +26,7 @@ import { useFaceTracking, type FaceFrame } from "@/hooks/useFaceTracking";
 import { useServices } from "@/hooks/useServices";
 import { useVitals } from "@/hooks/useVitals";
 import { useVoiceBiomarkers } from "@/hooks/useVoiceBiomarkers";
+import { AffectTracker, type Affect } from "@/lib/affect/multimodal";
 import {
   QUICK_REPLIES,
   SwitchInput,
@@ -72,6 +74,9 @@ export function CompanionAgent({ agent }: { agent: AgentDefinition }) {
    * the health measures, so the accessibility path costs one more function
    * call per frame rather than a second camera pass.
    */
+  const affectRef = useRef(new AffectTracker());
+  const [affect, setAffect] = useState<Affect>(() => new AffectTracker().analyse(null));
+
   const switchRef = useRef(new SwitchInput());
   const switchSendRef = useRef<((text: string) => void) | null>(null);
   const switchOnRef = useRef(false);
@@ -89,6 +94,10 @@ export function CompanionAgent({ agent }: { agent: AgentDefinition }) {
   const handleFrame = useCallback(
     (frame: FaceFrame) => {
       pushFrame(frame);
+      affectRef.current.push({
+        timestampMs: frame.timestampMs,
+        blendshapes: frame.blendshapes,
+      });
       if (!switchOnRef.current) return;
 
       const lm = frame.landmarks;
@@ -193,6 +202,20 @@ export function CompanionAgent({ agent }: { agent: AgentDefinition }) {
   switchSendRef.current = conversation.sendText;
   switchOnRef.current = running && profile.accessMode;
 
+  /**
+   * The two channels are read on a slow timer rather than per frame.
+   *
+   * Expression and prosody are both twenty-second averages by construction,
+   * so recomputing them thirty times a second would produce identical numbers
+   * at thirty times the cost — and re-render a very large component while
+   * doing it.
+   */
+  useEffect(() => {
+    if (!running) return;
+    const id = setInterval(() => setAffect(affectRef.current.analyse(voiceRef.current)), 1000);
+    return () => clearInterval(id);
+  }, [running]);
+
   useEffect(() => {
     switchRef.current.setOptions(QUICK_REPLIES);
     switchRef.current.configure({ mode: switchMode });
@@ -201,6 +224,7 @@ export function CompanionAgent({ agent }: { agent: AgentDefinition }) {
   const start = useCallback(async () => {
     startedAtRef.current = performance.now();
     resetVitals();
+    affectRef.current.reset();
     switchRef.current.reset();
     setSaved(false);
     setRunning(true);
@@ -657,6 +681,8 @@ export function CompanionAgent({ agent }: { agent: AgentDefinition }) {
             level={voice.level}
             speaking={voice.speaking}
           />
+
+          <AffectPanel affect={affect} accent={accent} />
         </div>
       </div>
 
