@@ -95,11 +95,16 @@ export function weeklyJournal(
   );
 
   const worst = entry.drifts[0];
+  // "Latest", explicitly, because the drift is about the most recent reading
+  // while the lines below are about the week's average. Both can be true at
+  // once — a week in line with usual, ending on a reading that is not — and
+  // a headline that did not say which it meant would look like a
+  // contradiction.
   entry.headline =
     worst && worst.verdict === "unusual"
-      ? `${worst.label} well outside your usual range`
+      ? `latest ${worst.label.toLowerCase()} well outside your usual range`
       : worst
-        ? `${worst.label} drifting from your usual`
+        ? `latest ${worst.label.toLowerCase()} drifting from your usual`
         : days >= 4
           ? "A steady week, measured most days"
           : "A steady week";
