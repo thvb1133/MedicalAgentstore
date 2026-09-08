@@ -6,6 +6,7 @@ import type { FaceLandmarkerResult } from "@mediapipe/tasks-vision";
 import { loadFaceLandmarker } from "@/lib/vision/mediapipe";
 import {
   sampleRegions,
+  sampleRegionsSeparately,
   skinRegions,
   type Landmark,
   type RegionSample,
@@ -14,8 +15,17 @@ import {
 export interface FaceFrame {
   timestampMs: number;
   landmarks: Landmark[] | null;
-  /** Mean skin colour of the forehead and cheeks, when a face was found. */
+  /** Mean skin colour of the forehead and cheeks together. */
   skin: RegionSample | null;
+  /**
+   * The same skin, region by region: forehead, left cheek, right cheek.
+   *
+   * Kept alongside the combined figure rather than replacing it because the
+   * two answer different questions. Downstream, the pulse is fused from the
+   * regions weighted by how much each looks like a pulse, while skin tone and
+   * the blood-pressure features want the whole face at once.
+   */
+  skinRegions: RegionSample[] | null;
   /** Named blendshape scores from MediaPipe, e.g. eyeBlinkLeft. */
   blendshapes: Map<string, number> | null;
   /** Normalised head displacement since the previous frame. */
@@ -105,6 +115,7 @@ export function useFaceTracking(
 
           const landmarks = (result.faceLandmarks?.[0] as Landmark[] | undefined) ?? null;
           let skin: RegionSample | null = null;
+          let perRegion: RegionSample[] | null = null;
           let motion = 0;
 
           if (landmarks) {
@@ -137,6 +148,7 @@ export function useFaceTracking(
                 y1: (b.y1 * h - by0) / rh,
               }));
               skin = sampleRegions(image.data, rw, rh, local);
+              perRegion = sampleRegionsSeparately(image.data, rw, rh, local);
             }
 
             const nose = landmarks[1];
@@ -159,6 +171,7 @@ export function useFaceTracking(
             timestampMs: now,
             landmarks,
             skin,
+            skinRegions: perRegion,
             blendshapes,
             motion,
             videoWidth: video.videoWidth,

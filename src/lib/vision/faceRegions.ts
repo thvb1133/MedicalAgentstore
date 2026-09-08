@@ -90,6 +90,31 @@ export interface RegionSample {
   b: number;
   /** Fraction of sampled pixels that passed the skin screen. */
   coverage: number;
+  /** Mean luminance of the accepted pixels, 0-255. */
+  luma: number;
+  /** Fraction of sampled pixels clipped white or crushed black. */
+  clipped: number;
+}
+
+const EMPTY_SAMPLE: RegionSample = { r: 0, g: 0, b: 0, coverage: 0, luma: 0, clipped: 0 };
+
+/**
+ * Each region on its own, in the order `skinRegions` returns them.
+ *
+ * Sampling separately rather than averaging first is what makes the fusion
+ * downstream possible: the three regions fail independently — a hand on one
+ * cheek, a window on one side, a fringe over the forehead — and an average
+ * taken before extraction mixes the ruined one back in at full weight with no
+ * way to tell afterwards.
+ */
+export function sampleRegionsSeparately(
+  data: Uint8ClampedArray,
+  width: number,
+  height: number,
+  boxes: Box[],
+  stride = 2,
+): RegionSample[] {
+  return boxes.map((box) => sampleRegions(data, width, height, [box], stride));
 }
 
 /**
@@ -108,8 +133,10 @@ export function sampleRegions(
   let sumR = 0;
   let sumG = 0;
   let sumB = 0;
+  let sumLuma = 0;
   let kept = 0;
   let total = 0;
+  let clipped = 0;
 
   for (const box of boxes) {
     const x0 = Math.max(0, Math.floor(box.x0 * width));
@@ -124,21 +151,32 @@ export function sampleRegions(
         const g = data[i + 1];
         const b = data[i + 2];
         total++;
+        // Counted before the skin screen, because a blown highlight or a
+        // crushed shadow is exactly what the lighting gate needs to know
+        // about and exactly what the screen throws away.
+        if (r + g + b < 60 || (r > 250 && g > 250 && b > 250)) clipped++;
         if (!isSkinPixel(r, g, b)) continue;
         sumR += r;
         sumG += g;
         sumB += b;
+        // Rec. 709 luma, which weights green the way the eye and the sensor
+        // both do.
+        sumLuma += 0.2126 * r + 0.7152 * g + 0.0722 * b;
         kept++;
       }
     }
   }
 
-  if (kept === 0) return { r: 0, g: 0, b: 0, coverage: 0 };
+  if (kept === 0) {
+    return { ...EMPTY_SAMPLE, clipped: total === 0 ? 0 : clipped / total };
+  }
   return {
     r: sumR / kept,
     g: sumG / kept,
     b: sumB / kept,
     coverage: total === 0 ? 0 : kept / total,
+    luma: sumLuma / kept,
+    clipped: total === 0 ? 0 : clipped / total,
   };
 }
 

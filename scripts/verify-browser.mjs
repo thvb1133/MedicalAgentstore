@@ -231,6 +231,15 @@ async function main() {
     const bpWithheld = /one-time calibration|Not calibrated/i.test(stage);
     record("blood pressure withheld pending calibration", bpWithheld);
 
+    // The trust panels report on a face. With none in frame they have to stay
+    // silent rather than announce that the light is unusable or that a
+    // rhythm was uneven, both of which would be claims about nobody.
+    record(
+      "the trust panels say nothing about a face that is not there",
+      !/Beat spacing|Cross-check/i.test(stage) && !/Not enough/i.test(stage),
+      stage.slice(0, 80),
+    );
+
     console.log("\nMicrophone path, through the companion agent");
     const audioAsset = await page.evaluate(
       async (url) => (await fetch(url, { method: "HEAD" })).status,

@@ -81,6 +81,8 @@ assistant dock on two unrelated routes to confirm it is mounted site-wide.
 
 Each stage exists because the one before it leaves a specific problem unsolved.
 
+0. **The lighting gate, before anything else.** The pulse is a fraction of a percent of the reflected brightness, so in a dim room most of it is quantised away before any code sees it — and the failure is silent, because the numbers still come out. Brightness, clipping, evenness across the three regions and frame-to-frame flicker are each checked, and the interface reports the one thing most worth changing: not "too dark" but "the light is coming from one side, turn to face it". A dim but even room is allowed through with a warning rather than blocked, because refusing to measure is its own kind of dishonesty.
+
 1. **Region selection.** MediaPipe face landmarks define a forehead box (inset from the hairline, stopping above the brows) and two cheek boxes. Pixels are screened by channel *ratios* rather than absolute brightness — absolute-value skin detectors are badly biased against darker skin, whereas the red-above-green-above-blue relationship holds across tones.
 
 2. **Uniform resampling.** Webcam frames do not arrive at a constant rate; dropped frames and browser throttling are normal. Every spectral method downstream assumes uniform sampling, so timestamps are interpolated onto a fixed grid first. Skipping this is the single most common cause of a wrong heart rate.
@@ -93,13 +95,15 @@ Each stage exists because the one before it leaves a specific problem unsolved.
 
 6. **Method selection by prominence.** Prominence — the share of in-band power under the tallest peak — separates a pulse from noise, because a heartbeat concentrates power into one narrow line while noise spreads it. The best of the three candidates wins, chosen per measurement rather than fixed in advance.
 
-7. **Beat detection.** An adaptive-threshold detector with a refractory period derived from the spectral estimate, so the two stages reinforce each other rather than failing independently. Intervals more than 25% from the running median are discarded as missed or doubled beats before HRV is computed.
+7. **Multi-region fusion, weighted by quality.** The forehead and each cheek are extracted *separately* and then combined weighted by how much each looks like a pulse — coverage times prominence squared — rather than averaged. This matters because the three regions fail independently: a hand against one cheek, a window lighting one side, a fringe over the forehead. Averaging the pixels before extraction mixes the ruined region back in at full weight with no way to tell afterwards. Regions that disagree with the leading one are excluded from the sum rather than averaged down, because a dissenting region is not noise — it is measuring something else, and including it would drag the answer towards a rate nothing observed.
+
+8. **Beat detection.** An adaptive-threshold detector with a refractory period derived from the spectral estimate, so the two stages reinforce each other rather than failing independently. Intervals more than 25% from the running median are discarded as missed or doubled beats before HRV is computed.
 
 ---
 
 ## Why numbers disappear
 
-Signal quality is the **product** of seven independent terms, not their average:
+Signal quality is the **product** of eight independent terms, not their average:
 
 | Term | Fails when |
 |---|---|
@@ -110,10 +114,28 @@ Signal quality is the **product** of seven independent terms, not their average:
 | Spectral prominence | No tight spectral line — weak or absent pulse |
 | Window fill | Not enough data collected yet |
 | **Cross-method agreement** | POS, CHROM and green disagree about the rate |
+| **Cross-region agreement** | Forehead and cheeks disagree about the rate |
+| Lighting | Too dark, blown out, one-sided or flickering |
 
 A serious failure in any one drags the whole score down instead of being averaged away, and the engine reports **which** term is binding — so the interface says "too much movement" rather than "poor signal".
 
 Cross-method agreement is the term that stops confident wrong answers. The three projections weight the colour channels very differently, so a noise peak that looks prominent in one rarely appears at the same frequency in the others. A test sweeps noise across five orders of magnitude and asserts the engine either reports the right rate or reports nothing.
+
+**Cross-region agreement is the stronger of the two**, and supersedes it when both are available. Three methods agreeing on one patch of skin can share an artefact, because they are reading the same pixels; the forehead and both cheeks arriving at the same rate cannot, unless whatever caused it moved the whole face — which the motion term already catches. The interface shows the breakdown rather than folding it into a score: three rows, each with the rate that region found and how much weight it carried.
+
+Lighting enters as a ceiling rather than a full factor. It is already represented indirectly through the spectral and agreement terms, so multiplying the raw score in as well would count it twice. What it adds is that a reading taken in the dark cannot claim "excellent" on the strength of a lucky peak.
+
+### Beat spacing, and what it is not
+
+Average heart rate hides the thing most worth noticing: a run of intervals going 800, 810, 795, 640, 980, 805 averages out to something unremarkable, and the irregularity is the whole of the finding. So the beat-to-beat intervals are scored for scatter relative to the rate, for the share of successive intervals differing by more than 50 ms, and for intervals far from the local median.
+
+The output is deliberately blunt — even, normal variation, or uneven — and it is judged only on readings already good enough to have found their beats reliably. Atrial fibrillation is diagnosed on an ECG, and the studies that put photoplethysmographic detection anywhere near useful used a wrist sensor against the skin, minutes of data, and a trained classifier. A webcam has a fraction of that signal quality, and every artefact it suffers looks exactly like an ectopic beat. "Uneven" says that most likely you moved, that it is worth mentioning to a doctor who can put a real lead on you, and that this is not a diagnosis. It never names a rhythm.
+
+### Saying where this works less well
+
+Melanin sits above the vessels and absorbs strongly at exactly the wavelengths the green-channel contrast lives at, so on darker skin less light reaches the blood and less of what returns survives the trip out. The pulse is still there; there is less of it above the noise floor. This is documented, and not something anybody fixes in a weekend.
+
+What can be done is refusing to hide it. Skin tone is estimated per reading as an [Individual Typology Angle](https://doi.org/10.1111/j.1600-0846.2006.00212.x) over CIELAB, collapsed to three bands, and used to add a sentence saying the confidence will run lower and why. Two constraints are load-bearing: the estimate **never** changes a reported value — it is not a correction factor, because a correction fitted to nobody's data would be an invented number dressed as fairness — and it is **never stored**, never attached to a report and never sent anywhere. It is computed from pixels already in memory, used to pick a sentence, and discarded.
 
 ---
 

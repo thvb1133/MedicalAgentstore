@@ -14,6 +14,12 @@ import { useCompanionProfile } from "@/hooks/useCompanionProfile";
 import { useFaceTracking, type FaceFrame } from "@/hooks/useFaceTracking";
 import { useServices } from "@/hooks/useServices";
 import { useVitals } from "@/hooks/useVitals";
+import {
+  FairnessNote,
+  LightingGate,
+  RegionAgreement,
+  RhythmNote,
+} from "@/components/vitals/TrustPanels";
 import type { AgentDefinition } from "@/lib/agents/registry";
 import { addLocalReport } from "@/lib/history";
 import type { MeasurementReport } from "@/lib/report";
@@ -258,6 +264,11 @@ export function VitalsAgent({ agent }: { agent: AgentDefinition }) {
           </div>
 
           <QualityMeter quality={quality} />
+
+          <LightingGate lighting={snapshot.lighting} />
+          <RegionAgreement fusion={snapshot.fusion} />
+          <RhythmNote rhythm={snapshot.rhythm} />
+          <FairnessNote tone={snapshot.tone} />
 
           <BpCalibrationCard
             estimate={snapshot.bp}

@@ -16,7 +16,7 @@ import {
   magnitudeSpectrum,
   type SpectralPeak,
 } from "../signal/fft";
-import { median, resampleUniform, stdDev } from "../signal/filters";
+import { mean, median, resampleUniform, stdDev } from "../signal/filters";
 import {
   BREATHING_BAND_HZ,
   PULSE_BAND_HZ,
@@ -27,14 +27,37 @@ import {
   type RppgMethod,
 } from "../signal/rppg";
 import { computeHrv, findBeats, stressFromSdnn, type HrvResult } from "../signal/peaks";
+import { fusePulse, type RegionName, type RegionTrace } from "../signal/fusion";
+import { assessLighting, unknownLighting, type LightingReport } from "./lighting";
+import { assessRhythm, type RhythmReport } from "./rhythm";
+import { assessTone, type ToneConfidence } from "./skinTone";
+
+/** Forehead, left cheek and right cheek, in the order `skinRegions` returns. */
+export interface FrameRegion {
+  r: number;
+  g: number;
+  b: number;
+  coverage: number;
+  luma: number;
+  clipped: number;
+}
 
 /** One camera frame's worth of measurements. */
 export interface VitalsFrame {
   timestampMs: number;
-  /** Mean red, green, blue of the skin regions of interest, 0-255. */
+  /** Mean red, green, blue over all skin regions together, 0-255. */
   r: number;
   g: number;
   b: number;
+  /**
+   * The same skin, region by region.
+   *
+   * Optional so that a caller with one averaged sample — the older shape, and
+   * the synthetic traces the tests are built on — still works. When it is
+   * present the engine fuses the regions by quality instead, which is
+   * materially better whenever one of them is compromised.
+   */
+  regions?: FrameRegion[];
   /** Vertical position of the face centre in normalised units, for breathing. */
   faceY: number;
   /** Frame-to-frame head displacement in normalised units, for motion rejection. */
@@ -65,6 +88,18 @@ export interface VitalsResult {
   hrv: HrvResult;
   stressIndex: number | null;
   quality: QualityReport;
+  /** Whether the light is good enough, and what to change if not. */
+  lighting: LightingReport;
+  /** Whether the beat spacing was even. Never a diagnosis. */
+  rhythm: RhythmReport;
+  /** Where this method is known to work less well, said out loud. */
+  tone: ToneConfidence;
+  /** Per-region breakdown, when regions were supplied. */
+  fusion: {
+    regions: Array<{ name: RegionName; weight: number; bpm: number | null }>;
+    concurring: number;
+    contributing: number;
+  } | null;
   /** Band-limited pulse waveform for the on-screen trace. */
   waveform: Float64Array;
   /** Sample rate the waveform was computed at. */
@@ -155,6 +190,7 @@ function assessQuality(
   opts: EngineOptions,
   peakProminence: number,
   agreement: number,
+  lighting?: LightingReport,
 ): QualityReport {
   const fill = Math.min(1, frames.length / (opts.windowSeconds * opts.targetFps));
 
@@ -194,6 +230,17 @@ function assessQuality(
   const spectralTerm = clamp((peakProminence - 0.15) / (0.7 - 0.15), 0, 1);
   const fillTerm = Math.min(1, fill / 0.5);
   const agreementTerm = agreement;
+  /**
+   * Light enters as a floor rather than a full factor.
+   *
+   * It is already represented indirectly — bad light produces a weak spectral
+   * peak and poor region agreement — so multiplying the raw score in as well
+   * would count it twice. What it adds that nothing else does is a ceiling:
+   * a reading taken in the dark should not be able to claim "excellent" on
+   * the strength of a lucky peak.
+   */
+  const lightTerm =
+    lighting && lighting.verdict !== "unknown" ? 0.55 + 0.45 * lighting.score : 1;
 
   const score =
     faceTerm *
@@ -202,7 +249,8 @@ function assessQuality(
     jitterTerm *
     spectralTerm *
     fillTerm *
-    agreementTerm;
+    agreementTerm *
+    lightTerm;
 
   const candidates: Array<[number, string]> = [
     [faceTerm, "Face not consistently visible"],
@@ -211,7 +259,8 @@ function assessQuality(
     [jitterTerm, "Frame timing unstable — close other tabs"],
     [spectralTerm, "Pulse signal weak — try brighter, even lighting"],
     [fillTerm, "Still collecting data"],
-    [agreementTerm, "Pulse estimate unstable — extraction methods disagree"],
+    [agreementTerm, "Pulse estimate unstable — parts of your face disagree"],
+    [lightTerm, lighting?.advice ?? "Lighting is limiting the reading"],
   ];
   candidates.sort((a, b) => a[0] - b[0]);
   const limiting = candidates[0][0] < 0.85 ? candidates[0][1] : null;
@@ -309,6 +358,9 @@ export function analyseVitals(
   const frames = buffer.snapshot();
   const fs = opts.targetFps;
 
+  const lighting = readLighting(frames);
+  const tone = readTone(frames);
+
   const emptyResult = (quality: QualityReport): VitalsResult => ({
     heartRateBpm: null,
     method: null,
@@ -323,6 +375,10 @@ export function analyseVitals(
     },
     stressIndex: null,
     quality,
+    lighting,
+    rhythm: assessRhythm([]),
+    tone,
+    fusion: null,
     waveform: new Float64Array(0),
     waveformFs: fs,
     beatTimesS: [],
@@ -333,20 +389,51 @@ export function analyseVitals(
   }
 
   const timestamps = frames.map((f) => f.timestampMs);
-  const rs = resampleUniform(timestamps, frames.map((f) => f.r), fs).values;
-  const gs = resampleUniform(timestamps, frames.map((f) => f.g), fs).values;
-  const bs = resampleUniform(timestamps, frames.map((f) => f.b), fs).values;
+  const grid = (pick: (f: VitalsFrame) => number) =>
+    resampleUniform(timestamps, frames.map(pick), fs).values;
 
-  const trace: RgbTrace = { r: rs, g: gs, b: bs };
+  const trace: RgbTrace = { r: grid((f) => f.r), g: grid((f) => f.g), b: grid((f) => f.b) };
+
+  // The method is chosen on the combined trace, because that choice is about
+  // which colour projection suits the conditions and is the same answer for
+  // every patch of the same face. The regions are then fused using it.
   const chosen = selectPulse(trace, fs, opts.method);
-  const { waveform: pulse, peak, method, agreement } = chosen;
+  const regionTraces = buildRegionTraces(frames, timestamps, fs);
+  const fused =
+    regionTraces.length >= 2 && chosen.method
+      ? fusePulse(regionTraces, fs, chosen.method)
+      : null;
 
-  const quality = assessQuality(frames, opts, peak?.prominence ?? 0, agreement);
+  // Region agreement supersedes method agreement when it is available. Three
+  // methods agreeing on one patch of skin can share an artefact, because they
+  // are reading the same pixels; three regions agreeing cannot.
+  const useFused = fused !== null && fused.peak !== null;
+  const pulse = useFused ? fused.waveform : chosen.waveform;
+  const peak = useFused ? fused.peak : chosen.peak;
+  const method = chosen.method;
+  const agreement = useFused
+    ? Math.max(fused.agreement, chosen.agreement * 0.9)
+    : chosen.agreement;
+
+  const quality = assessQuality(frames, opts, peak?.prominence ?? 0, agreement, lighting);
   const spectralHr = peak ? peak.freq * 60 : null;
+
+  const fusionReport = fused
+    ? {
+        regions: fused.regions.map((r) => ({
+          name: r.name,
+          weight: r.weight,
+          bpm: r.peak ? r.peak.freq * 60 : null,
+        })),
+        concurring: fused.concurring,
+        contributing: fused.contributing,
+      }
+    : null;
 
   if (quality.score < opts.minQuality || spectralHr === null) {
     return {
       ...emptyResult(quality),
+      fusion: fusionReport,
       waveform: pulse,
       waveformFs: fs,
     };
@@ -383,8 +470,84 @@ export function analyseVitals(
     hrv,
     stressIndex: stressFromSdnn(hrv.sdnn),
     quality,
+    lighting,
+    // Only judged on a reading good enough to have found its beats reliably.
+    // Below that the intervals are as likely to be detection failures as
+    // anything the heart did, and calling those irregular would be alarming
+    // somebody about the camera.
+    rhythm: assessRhythm(quality.score >= 0.5 ? hrv.acceptedIntervals : []),
+    tone,
+    fusion: fusionReport,
     waveform: pulse,
     waveformFs: fs,
     beatTimesS: beats.map((b) => b.timeS),
   };
+}
+
+const REGION_NAMES: RegionName[] = ["forehead", "left cheek", "right cheek"];
+
+/**
+ * One resampled trace per region, for the frames that carry them.
+ *
+ * A region absent from some frames — the tracker briefly losing a cheek — is
+ * dropped entirely rather than gap-filled, because an interpolated stretch of
+ * colour has no pulse in it and would only dilute the regions that do.
+ */
+function buildRegionTraces(
+  frames: VitalsFrame[],
+  timestamps: number[],
+  fs: number,
+): RegionTrace[] {
+  const count = frames[0]?.regions?.length ?? 0;
+  if (count === 0 || !frames.every((f) => (f.regions?.length ?? 0) === count)) return [];
+
+  const traces: RegionTrace[] = [];
+  for (let i = 0; i < count && i < REGION_NAMES.length; i++) {
+    const coverage = mean(frames.map((f) => f.regions![i].coverage));
+    // A region that is mostly hair, spectacle frame or shadow is not worth
+    // extracting; it contributes noise and a vote it has not earned.
+    if (coverage < 0.15) continue;
+    traces.push({
+      name: REGION_NAMES[i],
+      coverage,
+      trace: {
+        r: resampleUniform(timestamps, frames.map((f) => f.regions![i].r), fs).values,
+        g: resampleUniform(timestamps, frames.map((f) => f.regions![i].g), fs).values,
+        b: resampleUniform(timestamps, frames.map((f) => f.regions![i].b), fs).values,
+      },
+    });
+  }
+  return traces;
+}
+
+function readLighting(frames: VitalsFrame[]): LightingReport {
+  const withRegions = frames.filter((f) => f.regions && f.regions.length > 0);
+  if (withRegions.length === 0) return unknownLighting();
+
+  const count = withRegions[0].regions!.length;
+  const regions = [];
+  for (let i = 0; i < count; i++) {
+    const at = withRegions.filter((f) => f.regions![i] !== undefined);
+    if (at.length === 0) continue;
+    regions.push({
+      luma: mean(at.map((f) => f.regions![i].luma)),
+      clipped: mean(at.map((f) => f.regions![i].clipped)),
+      coverage: mean(at.map((f) => f.regions![i].coverage)),
+    });
+  }
+
+  // Whole-face brightness over time, which is where auto-exposure hunting and
+  // mains flicker show up.
+  const history = withRegions.map((f) => mean(f.regions!.map((r) => r.luma)));
+  return assessLighting(regions, history);
+}
+
+function readTone(frames: VitalsFrame[]): ToneConfidence {
+  const lit = frames.filter((f) => f.faceFound && f.r + f.g + f.b > 30);
+  if (lit.length === 0) return assessTone(0, 0, 0);
+  return assessTone(
+    median(lit.map((f) => f.r)),
+    median(lit.map((f) => f.g)),
+    median(lit.map((f) => f.b)),
+  );
 }

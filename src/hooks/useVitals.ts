@@ -19,6 +19,9 @@ import {
   type CuffReading,
   type PulseFeatures,
 } from "@/lib/vitals/bloodPressure";
+import { unknownLighting } from "@/lib/vitals/lighting";
+import { assessRhythm } from "@/lib/vitals/rhythm";
+import { assessTone } from "@/lib/vitals/skinTone";
 import type { FaceFrame } from "./useFaceTracking";
 
 export interface VitalsSnapshot extends VitalsResult {
@@ -42,6 +45,10 @@ const EMPTY: VitalsSnapshot = {
   },
   stressIndex: null,
   quality: { score: 0, grade: "no-signal", limiting: null, effectiveFps: 0, fill: 0 },
+  lighting: unknownLighting(),
+  rhythm: assessRhythm([]),
+  tone: assessTone(0, 0, 0),
+  fusion: null,
   waveform: new Float64Array(0),
   waveformFs: 30,
   beatTimesS: [],
@@ -99,6 +106,7 @@ export function useVitals(options: Partial<EngineOptions> = {}) {
         r: frame.skin?.r ?? 0,
         g: frame.skin?.g ?? 0,
         b: frame.skin?.b ?? 0,
+        regions: frame.skinRegions ?? undefined,
         // The nose tip's vertical position carries the breathing-driven
         // head bob; landmark 1 is stable enough to use directly.
         faceY: frame.landmarks?.[1]?.y ?? 0,
