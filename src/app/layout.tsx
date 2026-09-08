@@ -4,6 +4,7 @@ import "./globals.css";
 
 import { AssistantDock } from "@/components/assistant/AssistantDock";
 import { HostedNotice } from "@/components/HostedNotice";
+import { SiteFooter } from "@/components/SiteFooter";
 import { THEME_INIT_SCRIPT } from "@/components/ThemeToggle";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
@@ -49,6 +50,12 @@ export default function RootLayout({
         */}
         <HostedNotice />
         {children}
+        {/*
+          In the layout rather than on each page for the same reason as the
+          dock: it carries the regulatory line, and a disclaimer that is only
+          on the pages somebody remembered to add it to is not a disclaimer.
+        */}
+        <SiteFooter />
         {/*
           Mounted in the root layout rather than on each page, so it is
           genuinely on every route including ones added later, and so its

@@ -41,6 +41,11 @@ const NAV = [
   { href: "/appointments", label: "Appointments" },
   { href: "/history", label: "History" },
   { href: "/sign", label: "Sign language" },
+  { href: "/platform", label: "Platform" },
+  // Named for what it contains rather than "About". Somebody deciding whether
+  // to trust a measurement product is looking for the numbers, and burying
+  // them behind a company page is how they get missed.
+  { href: "/evidence", label: "Evidence" },
 ];
 export function SiteHeader({ children }: { children?: React.ReactNode }) {
   return (
