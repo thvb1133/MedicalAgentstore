@@ -9,6 +9,7 @@ import { useCompanionProfile } from "@/hooks/useCompanionProfile";
 import { useServices } from "@/hooks/useServices";
 import { avatarOr } from "@/lib/avatar/presets";
 import { personaInstructions } from "@/lib/avatar/profile";
+import { STATIC_BUILD } from "@/lib/paths";
 
 /**
  * The assistant that follows you around the site.
@@ -286,16 +287,29 @@ function Welcome({ name, onPick }: { name: string; onPick: (q: string) => void }
         Hello — I&rsquo;m {name}. Ask me about anything on this site, or about what a reading
         means. Write or speak in whatever language you like.
       </p>
+      {/*
+        Said before the first question rather than after it fails. Somebody
+        who types into a chat window and gets an error concludes the site is
+        broken; somebody told first that this copy has no model behind it
+        knows the measurements are still real.
+      */}
+      {STATIC_BUILD && (
+        <p className="mt-2 rounded-lg bg-[var(--surface-raised)] px-2.5 py-2 text-[11.5px] leading-relaxed text-[var(--faint)]">
+          On this hosted copy I have no language model behind me, so I cannot answer. Every
+          measurement on the site still works — all of it runs in your browser.
+        </p>
+      )}
       <div className="mt-2.5 flex flex-col items-start gap-1.5">
-        {OPENERS.map((question) => (
-          <button
-            key={question}
-            onClick={() => onPick(question)}
-            className="rounded-lg border border-[var(--border)] px-2.5 py-1.5 text-left text-[11.5px] text-[var(--muted)] transition-colors hover:text-[var(--foreground)]"
-          >
-            {question}
-          </button>
-        ))}
+        {!STATIC_BUILD &&
+          OPENERS.map((question) => (
+            <button
+              key={question}
+              onClick={() => onPick(question)}
+              className="rounded-lg border border-[var(--border)] px-2.5 py-1.5 text-left text-[11.5px] text-[var(--muted)] transition-colors hover:text-[var(--foreground)]"
+            >
+              {question}
+            </button>
+          ))}
       </div>
     </div>
   );

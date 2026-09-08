@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
 import { AssistantDock } from "@/components/assistant/AssistantDock";
+import { HostedNotice } from "@/components/HostedNotice";
 import { THEME_INIT_SCRIPT } from "@/components/ThemeToggle";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
@@ -41,6 +42,12 @@ export default function RootLayout({
           hand-written head.
         */}
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
+        {/*
+          Above the page rather than inside the header, so it scrolls away
+          once read instead of taking a permanent bite out of every screen.
+          Renders nothing at all in a build that has its keys.
+        */}
+        <HostedNotice />
         {children}
         {/*
           Mounted in the root layout rather than on each page, so it is

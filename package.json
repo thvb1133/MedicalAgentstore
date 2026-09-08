@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "build:static": "node scripts/build-static.mjs",
     "start": "next start",
     "lint": "eslint",
     "fetch-models": "node scripts/fetch-models.mjs",
