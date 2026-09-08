@@ -141,7 +141,10 @@ export function AssistantDock() {
           </header>
 
           {showFace && (
-            <div className="border-b border-[var(--border)] p-3">
+            // Narrow on purpose. The face is here to make the panel feel
+            // answered rather than to be looked at, and at full width it
+            // pushes the conversation itself off the bottom of the panel.
+            <div className="mx-auto w-[200px] border-b border-[var(--border)] p-3">
               <TalkingPresenter
                 avatar={avatar}
                 status={PRESENTER_STATUS[assistant.status]}
