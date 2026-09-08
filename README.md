@@ -441,7 +441,9 @@ Sensor readings reach the model as prose inside a `<sensors>` block, fenced off 
 
 **<https://thvb1133.github.io/MedicalAgentstore/>** — every push to `main` republishes it, from `.github/workflows/pages.yml`. Nothing about it is a mock-up: the camera runs, the models load, the pulse comes out of your own face.
 
-The very first publish needs Pages switched on once, under **Settings → Pages → Build and deployment → Source: GitHub Actions**. The workflow asks for it automatically, but creating a Pages site needs administration rights the workflow token is not granted by default, so it may have to be the one manual step. Everything before publishing — tests, lint, types, models, the export — runs regardless, so the build tells you whether the site is sound even before there is anywhere to put it.
+The built site is committed to a **`gh-pages`** branch, so switching it on is one setting and no permissions: **Settings → Pages → Build and deployment → Source: Deploy from a branch → `gh-pages` / `(root)`**. Publishing through the Pages deployment API instead would be tidier, and was tried first — it needs administration rights the workflow token is not granted, with the result that every build went green and nothing was ever published. A branch push needs only `contents: write`.
+
+Everything before publishing — tests, lint, types, models, the export — runs regardless, so the build tells you whether the site is sound even before there is anywhere to put it.
 
 It is a **static export with no server behind it**, which is possible because none of the measurement was ever on a server. The signal processing is arithmetic in the browser and the models are files, so a static host serves the whole of it. What a keyless build loses is exactly three things — Claude's replies, Polly's voice and the S3 mirror — and the site says so in a line across the top rather than leaving somebody to read a silent assistant as a broken product.
 

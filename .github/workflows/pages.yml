@@ -1,9 +1,15 @@
-name: Deploy to GitHub Pages
+name: Publish the demonstration
 
 # The public demonstration. It has no secrets and needs none: everything this
 # application measures is computed in the browser, so a static host serves the
 # whole of it. Claude, Polly and the S3 mirror are the only parts that require
 # a key, and the build says on the page that they are switched off here.
+#
+# It publishes by committing the built site to a `gh-pages` branch rather than
+# through the Pages deployment API. The API route is tidier and needs rights
+# the workflow token is not granted by default — creating a Pages site is an
+# administration action — which meant the whole build went green and nothing
+# was ever published. A branch push needs nothing but `contents: write`.
 
 on:
   push:
@@ -13,18 +19,16 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+  contents: write
 
-# One deployment at a time, and never cancel one halfway: an interrupted
-# publish leaves the site half-replaced.
+# One publish at a time, and never cancel one halfway: an interrupted push
+# leaves the site half-replaced.
 concurrency:
-  group: pages
+  group: publish
   cancel-in-progress: false
 
 jobs:
-  build:
+  publish:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -36,42 +40,31 @@ jobs:
 
       - run: npm ci
 
-      # Turns Pages on by itself where the token is allowed to, which needs
-      # administration rights it is not always given. Where it is refused the
-      # build carries on: the base path of a project page is the repository
-      # name, which we already know, and the only thing actually missing is a
-      # site to publish to — which is one setting, Pages → Source → GitHub
-      # Actions. Failing the whole build over it would hide the twenty checks
-      # below that are worth running either way.
-      - id: pages
-        continue-on-error: true
-        uses: actions/configure-pages@v5
-        with:
-          enablement: true
-
       # The MediaPipe runtime and the three task models, about 50 MB. They are
-      # not committed, and the CDN fallback would work — but a demonstration
-      # that stops because someone else's CDN is slow is not worth the saving.
+      # not committed to the source branch, and the CDN fallback would work —
+      # but a demonstration that stops because someone else's CDN is slow is
+      # not worth the saving.
       - run: npm run fetch-models
 
       - run: npm test
       - run: npm run lint
       - run: npx tsc --noEmit
 
+      # A project page is served under the repository name, and every asset
+      # path in the app is resolved against this.
       - run: npm run build:static
         env:
-          BASE_PATH: ${{ steps.pages.outputs.base_path || format('/{0}', github.event.repository.name) }}
+          BASE_PATH: /${{ github.event.repository.name }}
 
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: out
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - id: deployment
-        uses: actions/deploy-pages@v4
+      # Force-pushed as a single orphan commit. The branch is build output,
+      # not history: keeping every past copy of a 50 MB model directory would
+      # grow the repository without anybody ever reading it.
+      - name: Push the built site to gh-pages
+        run: |
+          cd out
+          git init -q -b gh-pages
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "Publish the static build of ${GITHUB_SHA::7}"
+          git push -q --force "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" gh-pages
