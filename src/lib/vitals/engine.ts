@@ -28,6 +28,7 @@ import {
 } from "../signal/rppg";
 import { computeHrv, findBeats, stressFromSdnn, type HrvResult } from "../signal/peaks";
 import { fusePulse, type RegionName, type RegionTrace } from "../signal/fusion";
+import { assessCoherence, unknownCoherence, type Coherence } from "./coherence";
 import { assessLighting, unknownLighting, type LightingReport } from "./lighting";
 import { assessRhythm, type RhythmReport } from "./rhythm";
 import { assessTone, type ToneConfidence } from "./skinTone";
@@ -94,6 +95,8 @@ export interface VitalsResult {
   rhythm: RhythmReport;
   /** Where this method is known to work less well, said out loud. */
   tone: ToneConfidence;
+  /** How far the heart's slow rhythm has fallen into step with the breath. */
+  coherence: Coherence;
   /** Per-region breakdown, when regions were supplied. */
   fusion: {
     regions: Array<{ name: RegionName; weight: number; bpm: number | null }>;
@@ -378,6 +381,7 @@ export function analyseVitals(
     lighting,
     rhythm: assessRhythm([]),
     tone,
+    coherence: unknownCoherence(),
     fusion: null,
     waveform: new Float64Array(0),
     waveformFs: fs,
@@ -477,6 +481,13 @@ export function analyseVitals(
     // somebody about the camera.
     rhythm: assessRhythm(quality.score >= 0.5 ? hrv.acceptedIntervals : []),
     tone,
+    // Same gate as the rhythm, and for the same reason: below it the interval
+    // series is as much detector noise as physiology, and noise looks exactly
+    // like incoherence.
+    coherence:
+      quality.score >= 0.5
+        ? assessCoherence(hrv.acceptedIntervals, breathingRateBpm)
+        : unknownCoherence("Signal not clean enough to read the rhythm"),
     fusion: fusionReport,
     waveform: pulse,
     waveformFs: fs,

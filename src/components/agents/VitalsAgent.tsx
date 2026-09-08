@@ -9,6 +9,7 @@ import { PulseTrace } from "@/components/PulseTrace";
 import { QualityMeter } from "@/components/QualityMeter";
 import { SafetyNotice } from "@/components/SafetyNotice";
 import { BpCalibrationCard } from "@/components/agents/BpCalibrationCard";
+import { BreathingCoach } from "@/components/vitals/BreathingCoach";
 import { useCamera } from "@/hooks/useCamera";
 import { useCompanionProfile } from "@/hooks/useCompanionProfile";
 import { useFaceTracking, type FaceFrame } from "@/hooks/useFaceTracking";
@@ -90,6 +91,12 @@ export function VitalsAgent({ agent }: { agent: AgentDefinition }) {
               : null,
           unit: "mmHg",
           note: snapshot.bp.message,
+        },
+        {
+          label: "Breath coherence",
+          value: snapshot.coherence.score,
+          unit: "/100",
+          note: "How concentrated the heart-rate variability is around one rhythm. A biofeedback measure, not a health one.",
         },
       ],
     };
@@ -208,6 +215,12 @@ export function VitalsAgent({ agent }: { agent: AgentDefinition }) {
             beatTimesS={snapshot.beatTimesS}
             colour={agent.accent}
             label="Pulse waveform — extracted from skin colour"
+          />
+
+          <BreathingCoach
+            coherence={snapshot.coherence}
+            breathingRateBpm={snapshot.breathingRateBpm}
+            accent={agent.accent}
           />
         </div>
 

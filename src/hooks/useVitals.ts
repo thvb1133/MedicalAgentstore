@@ -19,6 +19,7 @@ import {
   type CuffReading,
   type PulseFeatures,
 } from "@/lib/vitals/bloodPressure";
+import { unknownCoherence } from "@/lib/vitals/coherence";
 import { unknownLighting } from "@/lib/vitals/lighting";
 import { assessRhythm } from "@/lib/vitals/rhythm";
 import { assessTone } from "@/lib/vitals/skinTone";
@@ -48,6 +49,7 @@ const EMPTY: VitalsSnapshot = {
   lighting: unknownLighting(),
   rhythm: assessRhythm([]),
   tone: assessTone(0, 0, 0),
+  coherence: unknownCoherence(),
   fusion: null,
   waveform: new Float64Array(0),
   waveformFs: 30,
