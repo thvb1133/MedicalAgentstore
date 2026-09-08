@@ -1,4 +1,4 @@
-# Sanjivani Setu — संजीवनी सेतु
+# Sanjivani Setu
 
 **A store of measurement agents that turn an ordinary laptop camera into a clinical instrument.**
 
