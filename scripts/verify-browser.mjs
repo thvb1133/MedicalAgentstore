@@ -1031,6 +1031,257 @@ async function main() {
       consoleErrors.slice(0, 2).join(" | "),
     );
 
+    console.log("\nBreathing coach");
+    consoleErrors.length = 0;
+    await page.goto(`${BASE}/agents/vitals`, { waitUntil: "networkidle0" });
+    const coach = await page
+      .waitForSelector('[data-testid="breathing-coach"]', { timeout: 10000 })
+      .catch(() => null);
+    record("the coach is on the vitals page", coach !== null);
+
+    // The pacer has to actually pace. A circle that never changes size is the
+    // failure this catches, and it is invisible in a screenshot.
+    await page.evaluate(() => {
+      const panel = document.querySelector('[data-testid="breathing-coach"]');
+      [...(panel?.querySelectorAll("button") ?? [])]
+        .find((b) => b.textContent?.includes("Start pacer"))
+        ?.click();
+    });
+    const fullness = [];
+    for (let i = 0; i < 24; i++) {
+      await new Promise((r) => setTimeout(r, 180));
+      fullness.push(
+        await page.evaluate(() => {
+          const svg = document
+            .querySelector('[data-testid="breathing-coach"]')
+            ?.querySelector("svg[data-fullness]");
+          return svg ? Number(svg.dataset.fullness) : null;
+        }),
+      );
+    }
+    const measured = fullness.filter((v) => typeof v === "number");
+    const swing = measured.length > 0 ? Math.max(...measured) - Math.min(...measured) : 0;
+    record(
+      "the pacer actually breathes",
+      swing > 0.3 && new Set(measured).size > 8,
+      `${swing.toFixed(2)} of travel, ${new Set(measured).size} distinct`,
+    );
+
+    const paced = await page.evaluate(() => {
+      const panel = document.querySelector('[data-testid="breathing-coach"]');
+      const before = panel?.textContent ?? "";
+      [...(panel?.querySelectorAll("button") ?? [])]
+        .find((b) => b.textContent?.trim() === "Box, 4-4-4")
+        ?.click();
+      return { before };
+    });
+    await new Promise((r) => setTimeout(r, 400));
+    const afterPace = await page.evaluate(
+      () => document.querySelector('[data-testid="breathing-coach"]')?.textContent ?? "",
+    );
+    record(
+      "changing the pace changes what it asks for",
+      /6.0\/min/.test(paced.before) && /5.0\/min/.test(afterPace),
+    );
+    record(
+      "the coach refuses to be a treatment",
+      /not a therapy/i.test(afterPace) && /light-headed/i.test(afterPace),
+    );
+    record(
+      "with nobody in frame it claims no coherence",
+      /Measuring/.test(afterPace) && !/\b\d{1,3}\/100\b/.test(afterPace.split("Your breathing")[0]),
+    );
+
+    console.log("\nCognitive load");
+    consoleErrors.length = 0;
+    await page.goto(`${BASE}/agents/alertness`, { waitUntil: "networkidle0" });
+    const loadPanel = await page
+      .waitForSelector('[data-testid="cognitive-load"]', { timeout: 10000 })
+      .catch(() => null);
+    const loadText = loadPanel
+      ? await page.evaluate(
+          () => document.querySelector('[data-testid="cognitive-load"]')?.textContent ?? "",
+        )
+      : "";
+    record("cognitive load is on the alertness page", loadPanel !== null);
+    record(
+      "it names all three eye signals",
+      /Pupil size/.test(loadText) && /Blink rate/.test(loadText) && /Gaze scan/.test(loadText),
+    );
+    record(
+      "it says the light moves the pupil more than thinking does",
+      /light on your face moves/i.test(loadText),
+    );
+    record(
+      "it says what it is not a measure of",
+      /nothing about your ability, mood or health/i.test(loadText),
+    );
+    record(
+      "with nobody in frame it invents no score",
+      /—/.test(loadText) && !/\b\d{1,3}\/100\b/.test(loadText.split("Pupil size")[0].replace("/100", "")),
+    );
+
+    console.log("\nAnswering with eyes and hands");
+    consoleErrors.length = 0;
+    await page.goto(`${BASE}/agents/companion`, { waitUntil: "networkidle0" });
+    await page.evaluate(() => {
+      const key = "sanjivani-setu.companion-profile.v1";
+      const stored = JSON.parse(window.localStorage.getItem(key) ?? "{}");
+      window.localStorage.setItem(key, JSON.stringify({ ...stored, accessMode: true }));
+    });
+    await page.reload({ waitUntil: "networkidle0" });
+    await page.evaluate(() => {
+      [...document.querySelectorAll("button")]
+        .find((b) => b.textContent?.startsWith("Talk to"))
+        ?.click();
+    });
+    const board = await page
+      .waitForSelector('[data-testid="switch-board"]', { timeout: 15000 })
+      .catch(() => null);
+    const boardText = board
+      ? await page.evaluate(
+          () => document.querySelector('[data-testid="switch-board"]')?.textContent ?? "",
+        )
+      : "";
+    record("the eye switch appears in access mode", board !== null);
+    record(
+      "it offers answers worth having",
+      /Yes/.test(boardText) && /I need help/.test(boardText),
+    );
+    record(
+      "it explains that ordinary blinks will not fire it",
+      /ordinary blinks are too short/i.test(boardText),
+    );
+    record("it offers both ways in", /Scanning/.test(boardText) && /Look and hold/.test(boardText));
+
+    // Fingerspelling in is off until asked for, because it puts a second
+    // landmark model in the frame loop.
+    const spellHidden = await page.evaluate(
+      () => document.querySelector('[data-testid="fingerspell-input"]') === null,
+    );
+    record("reading the hand is off until asked for", spellHidden);
+
+    await page.evaluate(() => {
+      [...document.querySelectorAll("button")]
+        .find((b) => b.textContent?.includes("Let me spell to the camera"))
+        ?.click();
+    });
+    const speller = await page
+      .waitForSelector('[data-testid="fingerspell-input"]', { timeout: 15000 })
+      .catch(() => null);
+    const spellText = speller
+      ? await page.evaluate(
+          () => document.querySelector('[data-testid="fingerspell-input"]')?.textContent ?? "",
+        )
+      : "";
+    record("the hand reader can be switched on", speller !== null);
+    record(
+      "it does not claim to understand sign language",
+      /not understanding signing/i.test(spellText),
+    );
+    record(
+      "it names the letters it will not attempt",
+      /J, Z/.test(spellText) && /M, N, S, T/.test(spellText),
+    );
+    // With no hand in the fake video it must sit and wait, not spell noise.
+    await new Promise((r) => setTimeout(r, 3000));
+    const spelled = await page.evaluate(
+      () => document.querySelector('[data-testid="spelled-text"]')?.textContent ?? "",
+    );
+    record("it spells nothing from an empty frame", spelled.trim() === "…" || spelled.trim() === "");
+
+    console.log("\nYour week, and your own baseline");
+    consoleErrors.length = 0;
+    await page.goto(`${BASE}/history`, { waitUntil: "networkidle0" });
+
+    // A fortnight of steady readings and then one clearly outside them. The
+    // dates are relative to now because both the journal window and the
+    // baseline are time-based.
+    await page.evaluate(() => {
+      const day = 86_400_000;
+      const reading = (daysAgo, hr) => ({
+        agentSlug: "vitals",
+        agentName: "Contactless Vitals",
+        takenAt: new Date(Date.now() - daysAgo * day).toISOString(),
+        durationSeconds: 45,
+        quality: 0.85,
+        qualityNote: null,
+        metrics: [
+          { label: "Heart rate", value: hr, unit: "bpm" },
+          { label: "Breathing rate", value: 14, unit: "/min" },
+        ],
+      });
+      window.localStorage.setItem(
+        "sanjivani-setu.history.v1",
+        JSON.stringify([
+          reading(14, 65),
+          reading(12, 67),
+          reading(10, 66),
+          reading(9, 64),
+          reading(8, 66),
+          reading(3, 67),
+          reading(2, 66),
+          reading(1, 92),
+        ]),
+      );
+    });
+    await page.reload({ waitUntil: "networkidle0" });
+    await new Promise((r) => setTimeout(r, 800));
+
+    const journal = await page.evaluate(() => {
+      const el = document.querySelector('[data-testid="weekly-journal"]');
+      return el
+        ? {
+            text: el.textContent ?? "",
+            speakable: [...el.querySelectorAll("button")].some((b) =>
+              /Read it to me/.test(b.textContent ?? ""),
+            ),
+          }
+        : null;
+    });
+    record("the week is written up", journal !== null);
+    record(
+      "it counts the readings and the days",
+      /3 readings over 3 days/.test(journal?.text ?? ""),
+      (journal?.text ?? "").slice(0, 60),
+    );
+    record("it can be read aloud", journal?.speakable === true);
+    record(
+      "it says the model did not write it",
+      /not by the language model/i.test(journal?.text ?? ""),
+    );
+    record("it closes on what the numbers are not", /not a diagnosis/i.test(journal?.text ?? ""));
+
+    const drift = await page.evaluate(() => {
+      const cards = [...document.querySelectorAll('[data-testid="drift-card"]')];
+      const heart = cards.find((c) => /Heart rate/.test(c.textContent ?? ""));
+      return {
+        count: cards.length,
+        verdict: heart?.dataset.verdict ?? null,
+        text: heart?.textContent ?? "",
+      };
+    });
+    record("each metric is placed against the person's own baseline", drift.count >= 1);
+    record(
+      "a reading well outside that baseline is called unusual",
+      drift.verdict === "unusual",
+      drift.verdict ?? "no card",
+    );
+    record("it shows what usual means for this person", /usual 66/.test(drift.text));
+    record(
+      "it asks for a repeat rather than raising an alarm",
+      /Repeat the measurement/i.test(drift.text),
+    );
+    record(
+      "the page says the comparison is not against a population",
+      /Not against a population/i.test(await page.evaluate(() => document.body.innerText)),
+    );
+    record(
+      "the journal ran without console errors",
+      consoleErrors.length === 0,
+      consoleErrors.slice(0, 2).join(" | "),
+    );
+
     console.log("\nPage mounting");
     for (const path of [
       "/",

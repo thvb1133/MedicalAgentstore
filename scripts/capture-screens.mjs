@@ -20,7 +20,23 @@ const CHROME =
 
 const SHOTS = [
   { path: "/", name: "home_agent_store", wait: 1500 },
-  { path: "/agents/vitals", name: "vitals_agent", wait: 1500, start: "Start measuring" },
+  // Tall enough to take in the breathing coach below the pulse trace, which
+  // is half the point of the vitals page now.
+  {
+    path: "/agents/vitals",
+    name: "vitals_agent",
+    wait: 1500,
+    start: "Start measuring",
+    height: 1600,
+  },
+  {
+    path: "/agents/alertness",
+    name: "alertness_agent",
+    wait: 1500,
+    start: "Start monitoring",
+    startWait: 12000,
+    height: 1500,
+  },
   { path: "/agents/motor", name: "motor_agent", wait: 1200 },
   { path: "/agents/fast", name: "fast_agent", wait: 1200 },
   {
@@ -44,7 +60,7 @@ const SHOTS = [
   { path: "/sign", name: "signing", wait: 3000, height: 1250 },
   { path: "/sign", name: "fingerspelling", wait: 2500, tab: 1 },
   { path: "/appointments", name: "appointments", wait: 1500, seed: "appointments" },
-  { path: "/history", name: "history", wait: 2000, seed: "history" },
+  { path: "/history", name: "history", wait: 2000, seed: "history", height: 1700 },
   // The home page again in the dark theme, since both are real palettes
   // rather than one inverted and a dark-only shot only shows half the work.
   { path: "/", name: "home_night", wait: 1500, theme: "night" },
@@ -111,6 +127,9 @@ const SEEDS = {
       };
     };
     return {
+      // Enough separate days behind the latest reading for the personal
+      // baseline to exist, since a screenshot of "not enough history yet"
+      // shows none of the work.
       "sanjivani-setu.history.v1": [
         reading(0, 66, 13, 58, 0.88),
         reading(1, 69, 14, 54, 0.81),
@@ -118,6 +137,9 @@ const SEEDS = {
         reading(3, 71, 14, 49, 0.76),
         reading(5, 74, 15, 45, 0.83),
         reading(7, 72, 14, 47, 0.79),
+        reading(9, 70, 13, 51, 0.85),
+        reading(11, 68, 14, 55, 0.8),
+        reading(13, 73, 15, 44, 0.77),
       ],
     };
   },
