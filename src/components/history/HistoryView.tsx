@@ -5,7 +5,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useCompanionProfile } from "@/hooks/useCompanionProfile";
 import { useServices } from "@/hooks/useServices";
+import { useSpeak } from "@/hooks/useSpeak";
 import { AGENTS } from "@/lib/agents/registry";
+import { buildDrifts, type Drift } from "@/lib/baseline";
+import { journalSpeech, weeklyJournal } from "@/lib/journal";
 import {
   buildTrends,
   groupByAgent,
@@ -64,6 +67,8 @@ export function HistoryView() {
   }, [profile.profileId, ready, services.s3]);
 
   const trends = useMemo(() => buildTrends(reports), [reports]);
+  const journal = useMemo(() => weeklyJournal(reports), [reports]);
+  const drifts = useMemo(() => buildDrifts(reports, DRIFT_METRICS), [reports]);
   const groups = useMemo(() => groupByAgent(reports), [reports]);
   const usable = useMemo(
     () => reports.filter((r) => r.quality >= MIN_TREND_QUALITY),
@@ -144,6 +149,33 @@ export function HistoryView() {
 
   return (
     <div className="space-y-7">
+      {journal && (
+        <JournalCard
+          journal={journal}
+          voiceId={profile.voiceId}
+          speechRate={profile.speechRate}
+          pollyAvailable={services.polly}
+        />
+      )}
+
+      {drifts.length > 0 && (
+        <section>
+          <h2 className="text-[11px] font-medium uppercase tracking-[0.14em] text-[var(--faint)]">
+            Against your own baseline
+          </h2>
+          <p className="mt-1.5 max-w-2xl text-[12px] leading-relaxed text-[var(--muted)]">
+            Not against a population. Each reading is placed against the middle
+            of your own earlier ones and the amount you ordinarily vary by, with
+            a floor set at what the measurement can actually resolve.
+          </p>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            {drifts.map((drift) => (
+              <DriftCard key={drift.label} drift={drift} />
+            ))}
+          </div>
+        </section>
+      )}
+
       {trends.length > 0 && (
         <section>
           <h2 className="text-[11px] font-medium uppercase tracking-[0.14em] text-[var(--faint)]">
@@ -240,6 +272,142 @@ export function HistoryView() {
         second of audio — only the numbers you can see here.
       </p>
     </div>
+  );
+}
+
+/** Everything worth placing against a personal baseline, most useful first. */
+const DRIFT_METRICS = [
+  "Heart rate",
+  "HRV (SDNN)",
+  "Breathing rate",
+  "Stress index",
+  "Blood pressure",
+  "Breath coherence",
+  "Fatigue score",
+] as const;
+
+const DRIFT_STYLE: Record<Drift["verdict"], { label: string; colour: string }> = {
+  insufficient: { label: "Building", colour: "var(--faint)" },
+  "in-range": { label: "Usual for you", colour: "var(--good)" },
+  drifting: { label: "Drifting", colour: "var(--fair)" },
+  unusual: { label: "Unusual for you", colour: "var(--poor)" },
+};
+
+function DriftCard({ drift }: { drift: Drift }) {
+  const style = DRIFT_STYLE[drift.verdict];
+  return (
+    <div className="panel p-4" data-testid="drift-card" data-verdict={drift.verdict}>
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="text-[12px] text-[var(--foreground)]">{drift.label}</span>
+        <span className="text-[10.5px] uppercase tracking-[0.1em]" style={{ color: style.colour }}>
+          {style.label}
+        </span>
+      </div>
+
+      <div className="mt-1.5 flex items-baseline gap-2">
+        <span className="tabular text-[24px] font-semibold leading-none text-[var(--foreground)]">
+          {drift.latest ? drift.latest.value.toFixed(drift.latest.value % 1 === 0 ? 0 : 1) : "—"}
+        </span>
+        <span className="text-[11px] text-[var(--faint)]">{drift.unit}</span>
+        {drift.baseline && (
+          <span className="tabular ml-auto text-[11px] text-[var(--muted)]">
+            usual {drift.baseline.centre.toFixed(0)} ± {drift.baseline.spread.toFixed(0)}
+          </span>
+        )}
+      </div>
+
+      {drift.baseline && drift.z !== null && (
+        <div className="mt-3">
+          {/*
+            The bar is the person's own range, not a normal range. The middle
+            is their median and the ends are two of their own deviations, so
+            the marker's position answers "is this unusual for me" and cannot
+            be misread as "is this healthy".
+          */}
+          <div className="relative h-1.5 w-full overflow-hidden rounded-full bg-[var(--track)]">
+            <div
+              className="absolute inset-y-0 rounded-full"
+              style={{ left: "25%", width: "50%", background: "var(--good)", opacity: 0.35 }}
+            />
+            <div
+              className="absolute top-1/2 h-3 w-[3px] -translate-y-1/2 rounded-full"
+              style={{
+                left: `${Math.min(98, Math.max(2, 50 + (drift.z / 4) * 100))}%`,
+                background: style.colour,
+              }}
+            />
+          </div>
+          <div className="tabular mt-1.5 flex justify-between text-[10px] text-[var(--faint)]">
+            <span>−2 of your own</span>
+            <span>{drift.baseline.points} earlier readings</span>
+            <span>+2</span>
+          </div>
+        </div>
+      )}
+
+      <p className="mt-2.5 text-[11.5px] leading-relaxed text-[var(--muted)]">{drift.note}</p>
+    </div>
+  );
+}
+
+function JournalCard({
+  journal,
+  voiceId,
+  speechRate,
+  pollyAvailable,
+}: {
+  journal: NonNullable<ReturnType<typeof weeklyJournal>>;
+  voiceId: string;
+  speechRate: number;
+  pollyAvailable: boolean;
+}) {
+  const { speak, stop, speaking } = useSpeak({
+    voiceId,
+    rate: speechRate,
+    enabled: pollyAvailable,
+  });
+
+  return (
+    <section className="panel p-5" data-testid="weekly-journal">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-[14px] font-semibold text-[var(--foreground)]">
+            Your week: {journal.headline}
+          </h2>
+          <p className="mt-1 text-[11.5px] text-[var(--faint)]">
+            {journal.from} to {journal.to}
+          </p>
+        </div>
+        <button
+          onClick={() => (speaking ? stop() : void speak(journalSpeech(journal)))}
+          className="shrink-0 rounded-lg border border-[var(--border)] px-3 py-2 text-[12px] text-[var(--muted)] transition-colors hover:text-[var(--foreground)]"
+        >
+          {speaking ? "Stop" : "Read it to me"}
+        </button>
+      </div>
+
+      <div className="mt-4 space-y-2 border-t border-[var(--border)] pt-4">
+        {journal.lines.map((line, i) => (
+          <p
+            key={i}
+            className={
+              i === journal.lines.length - 1
+                ? "text-[11.5px] leading-relaxed text-[var(--faint)]"
+                : "text-[13px] leading-relaxed text-[var(--muted)]"
+            }
+          >
+            {line}
+          </p>
+        ))}
+      </div>
+
+      <p className="mt-3 text-[10.5px] leading-relaxed text-[var(--faint)]">
+        Written from your saved numbers, not by the language model. Claude can
+        read it aloud and answer questions about it, but it does not get to
+        write the summary — a fluent sentence containing a figure nobody
+        measured is the one failure mode that matters here.
+      </p>
+    </section>
   );
 }
 
