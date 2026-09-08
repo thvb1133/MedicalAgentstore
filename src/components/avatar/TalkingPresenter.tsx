@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { asset } from "@/lib/paths";
 import type { AvatarPreset } from "@/lib/avatar/presets";
 import { getRig, type FaceRig } from "@/lib/avatar/faceRig";
 import { presenterFrame, type PresenterStatus } from "@/lib/avatar/presenter";
@@ -302,11 +303,11 @@ export function canPresent(
 }
 
 export function photoFor(avatarId: string): string | null {
-  return getRig(avatarId) ? `/portraits/${avatarId}.photo.webp` : null;
+  return getRig(avatarId) ? asset(`/portraits/${avatarId}.photo.webp`) : null;
 }
 
 export function photoSquareFor(avatarId: string): string | null {
-  return getRig(avatarId) ? `/portraits/${avatarId}.photo.square.webp` : null;
+  return getRig(avatarId) ? asset(`/portraits/${avatarId}.photo.square.webp`) : null;
 }
 
 function wordCount(text: string): number {

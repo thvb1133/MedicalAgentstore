@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 
+import { api } from "@/lib/paths";
+
 export interface ServiceAvailability {
   claude: boolean;
   polly: boolean;
@@ -29,7 +31,12 @@ export function useServices(): { services: ServiceAvailability; loaded: boolean 
 
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/services")
+    const url = api("/api/services");
+    if (!url) {
+      setLoaded(true);
+      return;
+    }
+    fetch(url)
       .then((r) => (r.ok ? r.json() : NONE))
       .then((data: ServiceAvailability) => {
         if (!cancelled) setServices(data);

@@ -4,6 +4,7 @@ import { useCallback, useRef, useState } from "react";
 
 import { useServices } from "@/hooks/useServices";
 import type { MeasurementReport } from "@/lib/report";
+import { api, NO_SERVER } from "@/lib/paths";
 
 export interface InterpretationPanelProps {
   /** Null until a measurement has produced something worth interpreting. */
@@ -43,7 +44,9 @@ export function InterpretationPanel({ report, ready }: InterpretationPanelProps)
       setError(null);
 
       try {
-        const res = await fetch("/api/interpret", {
+        const interpretUrl = api("/api/interpret");
+        if (!interpretUrl) throw new Error(NO_SERVER);
+        const res = await fetch(interpretUrl, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ report, question: userQuestion }),
@@ -79,7 +82,9 @@ export function InterpretationPanel({ report, ready }: InterpretationPanelProps)
     if (!text) return;
     setSpeaking(true);
     try {
-      const res = await fetch("/api/speak", {
+      const speakUrl = api("/api/speak");
+      if (!speakUrl) throw new Error(NO_SERVER);
+      const res = await fetch(speakUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text }),

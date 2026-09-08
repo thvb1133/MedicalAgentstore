@@ -11,6 +11,7 @@ import {
 import { pollyVoiceId } from "@/lib/avatar/voices";
 import type { ConversationTurn } from "@/lib/conversation";
 import type { SpeechFrame } from "./useConversation";
+import { api, NO_SERVER } from "@/lib/paths";
 
 /**
  * The assistant that sits over every page.
@@ -120,8 +121,10 @@ export function useAssistant(options: AssistantOptions): AssistantState {
   const speak = useCallback(
     async (text: string) => {
       if (!speechEnabled || !text.trim()) return;
+      const speakUrl = api("/api/speak");
+      if (!speakUrl) return;
       try {
-        const response = await fetch("/api/speak", {
+        const response = await fetch(speakUrl, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ text, voice: pollyVoiceId(voiceId ?? ""), rate: speechRate }),
@@ -169,7 +172,9 @@ export function useAssistant(options: AssistantOptions): AssistantState {
 
         let reply = "";
         try {
-          const response = await fetch("/api/converse", {
+          const converseUrl = api("/api/converse");
+          if (!converseUrl) throw new Error(NO_SERVER);
+          const response = await fetch(converseUrl, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({

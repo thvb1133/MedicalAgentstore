@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { api } from "@/lib/paths";
+
 /**
  * Read a block of text aloud, once.
  *
@@ -44,9 +46,10 @@ export function useSpeak(options: { voiceId?: string; rate?: number; enabled?: b
       if (!trimmed) return;
       setSpeaking(true);
 
-      if (options.enabled !== false) {
+      const speakUrl = api("/api/speak");
+      if (options.enabled !== false && speakUrl) {
         try {
-          const response = await fetch("/api/speak", {
+          const response = await fetch(speakUrl, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({

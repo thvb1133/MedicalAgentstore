@@ -9,6 +9,7 @@ import {
   type SpeechAnalysis,
 } from "@/lib/avatar/speechAudio";
 import type { ConversationTurn, LiveContext } from "@/lib/conversation";
+import { api, NO_SERVER } from "@/lib/paths";
 
 /**
  * The turn-taking loop.
@@ -275,7 +276,9 @@ export function useConversation(options: ConversationOptions): ConversationState
     async (text: string): Promise<void> => {
       if (!speechEnabled || !text.trim()) return;
 
-      const response = await fetch("/api/speak", {
+      const speakUrl = api("/api/speak");
+      if (!speakUrl) throw new Error(NO_SERVER);
+      const response = await fetch(speakUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text, voice: pollyVoiceId(voiceId ?? ""), rate: speechRate }),
@@ -333,7 +336,9 @@ export function useConversation(options: ConversationOptions): ConversationState
 
       let reply = "";
       try {
-        const response = await fetch("/api/converse", {
+        const converseUrl = api("/api/converse");
+        if (!converseUrl) throw new Error(NO_SERVER);
+        const response = await fetch(converseUrl, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({

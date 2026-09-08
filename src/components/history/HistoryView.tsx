@@ -19,6 +19,7 @@ import {
   type Trend,
 } from "@/lib/history";
 import type { MeasurementReport } from "@/lib/report";
+import { api, NO_SERVER } from "@/lib/paths";
 
 /**
  * The history view.
@@ -86,7 +87,9 @@ export function HistoryView() {
     setReviewError(null);
 
     try {
-      const response = await fetch("/api/interpret", {
+      const interpretUrl = api("/api/interpret");
+      if (!interpretUrl) throw new Error(NO_SERVER);
+      const response = await fetch(interpretUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

@@ -19,6 +19,7 @@
  * mode has to remain a real choice rather than a downgrade.
  */
 
+import { asset } from "../paths";
 import { VoiceOption, VOICES } from "./voices";
 
 /**
@@ -71,7 +72,7 @@ export interface AvatarPreset {
 export const AVATARS: AvatarPreset[] = [
   {
     id: "maya",
-    portrait: "/portraits/maya.photo.square.webp",
+    portrait: asset("/portraits/maya.photo.square.webp"),
     name: "Maya",
     tagline: "Warm and steady. A good default for most people.",
     style: "orb",
@@ -83,7 +84,7 @@ export const AVATARS: AvatarPreset[] = [
   },
   {
     id: "daniel",
-    portrait: "/portraits/daniel.photo.square.webp",
+    portrait: asset("/portraits/daniel.photo.square.webp"),
     name: "Daniel",
     tagline: "Calm and precise. Explains the numbers properly.",
     style: "lattice",
@@ -95,7 +96,7 @@ export const AVATARS: AvatarPreset[] = [
   },
   {
     id: "grace",
-    portrait: "/portraits/grace.photo.square.webp",
+    portrait: asset("/portraits/grace.photo.square.webp"),
     name: "Grace",
     tagline: "Gentle and unhurried. Made for older users.",
     style: "aurora",
@@ -107,7 +108,7 @@ export const AVATARS: AvatarPreset[] = [
   },
   {
     id: "pip",
-    portrait: "/portraits/pip.webp",
+    portrait: asset("/portraits/pip.webp"),
     name: "Pip",
     tagline: "Simple and friendly. Made for children.",
     style: "bloom",
@@ -119,7 +120,7 @@ export const AVATARS: AvatarPreset[] = [
   },
   {
     id: "sofia",
-    portrait: "/portraits/sofia.photo.square.webp",
+    portrait: asset("/portraits/sofia.photo.square.webp"),
     name: "Sofia",
     tagline: "Friendly and direct. Comfortable switching languages.",
     style: "wave",
@@ -131,7 +132,7 @@ export const AVATARS: AvatarPreset[] = [
   },
   {
     id: "nova",
-    portrait: "/portraits/nova.photo.square.webp",
+    portrait: asset("/portraits/nova.photo.square.webp"),
     name: "Nova",
     tagline: "Brisk and to the point. Minimal small talk.",
     style: "prism",

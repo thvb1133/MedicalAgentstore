@@ -24,6 +24,7 @@ import {
 import type { AgentDefinition } from "@/lib/agents/registry";
 import { addLocalReport } from "@/lib/history";
 import type { MeasurementReport } from "@/lib/report";
+import { api } from "@/lib/paths";
 
 const WINDOW_SECONDS = 30;
 
@@ -118,8 +119,9 @@ export function VitalsAgent({ agent }: { agent: AgentDefinition }) {
     const current = reportRef.current;
     if (!current || current.quality < 0.35) return;
     addLocalReport(current);
-    if (services.s3) {
-      void fetch("/api/sessions", {
+    const mirror = api("/api/sessions");
+    if (services.s3 && mirror) {
+      void fetch(mirror, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ profileId: profile.profileId, report: current }),

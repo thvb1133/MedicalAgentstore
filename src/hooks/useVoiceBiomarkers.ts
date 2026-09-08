@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { asset } from "@/lib/paths";
 import { VoiceBuffer, type VoiceAnalysis } from "@/lib/voice/engine";
 
 /**
@@ -192,7 +193,7 @@ export function useVoiceBiomarkers(options: VoiceBiomarkerOptions = {}): VoiceBi
 
       bufferRef.current = new VoiceBuffer(WINDOW_SECONDS, context.sampleRate);
 
-      await context.audioWorklet.addModule("/audio/voice-capture.js");
+      await context.audioWorklet.addModule(asset("/audio/voice-capture.js"));
       const source = context.createMediaStreamSource(stream);
       const node = new AudioWorkletNode(context, "voice-capture");
       node.port.onmessage = (event) => handleBlock(event.data as Float32Array);

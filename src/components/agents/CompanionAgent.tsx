@@ -42,6 +42,7 @@ import type { LiveContext } from "@/lib/conversation";
 import { addLocalReport } from "@/lib/history";
 import type { MeasurementReport } from "@/lib/report";
 import type { VoiceAnalysis } from "@/lib/voice/engine";
+import { api } from "@/lib/paths";
 
 const WINDOW_SECONDS = 30;
 
@@ -272,8 +273,9 @@ export function CompanionAgent({ agent }: { agent: AgentDefinition }) {
         ],
       };
       addLocalReport(report);
-      if (services.s3) {
-        void fetch("/api/sessions", {
+      const mirror = api("/api/sessions");
+      if (services.s3 && mirror) {
+        void fetch(mirror, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ profileId: profile.profileId, report }),

@@ -27,6 +27,7 @@ import {
   voiceForLanguage,
   type VoiceOption,
 } from "@/lib/avatar/voices";
+import { api, NO_SERVER } from "@/lib/paths";
 
 /**
  * Choosing and editing the companion.
@@ -108,7 +109,9 @@ export function CompanionSettings({
     audioRef.current?.pause();
     setPreviewing(voice.id);
     try {
-      const response = await fetch("/api/speak", {
+      const speakUrl = api("/api/speak");
+      if (!speakUrl) throw new Error(NO_SERVER);
+      const response = await fetch(speakUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

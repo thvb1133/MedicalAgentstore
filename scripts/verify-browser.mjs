@@ -168,7 +168,7 @@ async function main() {
     ]) {
       const status = await page.evaluate(
         async (url) => (await fetch(url, { method: "HEAD" })).status,
-        asset,
+        `${BASE}${asset}`,
       );
       record(asset, status === 200, `HTTP ${status}`);
     }
@@ -243,7 +243,7 @@ async function main() {
     console.log("\nMicrophone path, through the companion agent");
     const audioAsset = await page.evaluate(
       async (url) => (await fetch(url, { method: "HEAD" })).status,
-      "/audio/voice-capture.js",
+      `${BASE}/audio/voice-capture.js`,
     );
     record("/audio/voice-capture.js served", audioAsset === 200, `HTTP ${audioAsset}`);
 
