@@ -239,6 +239,29 @@ export function irisMeasurement(lm: Landmark[], iris: readonly number[]): IrisMe
 }
 
 /**
+ * The iris as a circle in pixel coordinates.
+ *
+ * Separate from `irisMeasurement` because that works in normalised units,
+ * where x and y are divided by different numbers and a circle is therefore an
+ * ellipse. Anything reading pixels back out of the frame needs the real
+ * geometry.
+ */
+export function irisCircle(
+  lm: Landmark[],
+  iris: readonly number[],
+  width: number,
+  height: number,
+): { x: number; y: number; r: number } | null {
+  if (lm.length < 478) return null;
+  const pts = iris.map((i) => ({ x: lm[i].x * width, y: lm[i].y * height }));
+  const across = Math.hypot(pts[1].x - pts[3].x, pts[1].y - pts[3].y);
+  const down = Math.hypot(pts[2].x - pts[4].x, pts[2].y - pts[4].y);
+  const r = (across + down) / 4;
+  if (!Number.isFinite(r) || r <= 0) return null;
+  return { x: pts[0].x, y: pts[0].y, r };
+}
+
+/**
  * Horizontal gaze as the iris centre's offset within the eye opening.
  * Zero is centred, negative is towards the subject's right, +/-1 is the corner.
  */

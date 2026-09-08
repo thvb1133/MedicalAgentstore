@@ -100,6 +100,18 @@ export class AlertnessTracker {
     return this.baseline;
   }
 
+  /**
+   * When each blink in the window finished.
+   *
+   * Exposed so the cognitive-load measure can count blinks without running a
+   * second detector over the same landmarks. Two detectors would disagree at
+   * the margins for no reason, and this one is already calibrated to the
+   * person's own open-eye baseline.
+   */
+  blinkEndTimes(): number[] {
+    return this.blinks.map((b) => b.endMs);
+  }
+
   push(frame: AlertnessFrame): void {
     if (this.firstTimestamp === null) this.firstTimestamp = frame.timestampMs;
 
