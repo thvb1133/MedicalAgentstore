@@ -10,6 +10,7 @@ import { CaptionBar } from "@/components/CaptionBar";
 import { CompanionSettings } from "@/components/avatar/CompanionSettings";
 import { PortraitPresence } from "@/components/avatar/PortraitPresence";
 import { canPresent, TalkingPresenter } from "@/components/avatar/TalkingPresenter";
+import { FingerspellInput } from "@/components/sign/FingerspellInput";
 import { SignAvatar } from "@/components/sign/SignAvatar";
 import { SigningAvatar } from "@/components/sign/SigningAvatar";
 import { SKIN_TONES } from "@/components/sign/render";
@@ -82,6 +83,7 @@ export function CompanionAgent({ agent }: { agent: AgentDefinition }) {
   const switchOnRef = useRef(false);
   const switchPaintedAt = useRef(0);
   const [switchMode, setSwitchMode] = useState<SwitchMode>("scan");
+  const [spellIn, setSpellIn] = useState(false);
   const [switchState, setSwitchState] = useState<SwitchState>({
     focus: 0,
     progress: 0,
@@ -482,6 +484,33 @@ export function CompanionAgent({ agent }: { agent: AgentDefinition }) {
             answer yes, ask for a repeat, or call for help — from the same
             camera pass that is reading their pulse.
           */}
+          {profile.accessMode && running && (
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                onClick={() => setSpellIn((s) => !s)}
+                className="rounded-lg border px-3 py-1.5 text-[12px] transition-colors"
+                style={{
+                  borderColor: spellIn ? accent : "var(--border)",
+                  color: spellIn ? "var(--foreground)" : "var(--muted)",
+                }}
+              >
+                {spellIn ? "Stop reading my hand" : "Let me spell to the camera"}
+              </button>
+              <span className="text-[11px] text-[var(--faint)]">
+                Reads the manual alphabet from the same camera pass as your pulse.
+              </span>
+            </div>
+          )}
+
+          {profile.accessMode && running && (
+            <FingerspellInput
+              videoRef={videoRef}
+              enabled={spellIn}
+              accent={accent}
+              onSend={(text) => conversation.sendText(text)}
+            />
+          )}
+
           {profile.accessMode && running && (
             <SwitchBoard
               options={QUICK_REPLIES}
