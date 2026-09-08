@@ -437,11 +437,33 @@ Sensor readings reach the model as prose inside a `<sensors>` block, fenced off 
 
 ---
 
+## The public demonstration
+
+**<https://thvb1133.github.io/MedicalAgentstore/>** — every push to `main` republishes it, from `.github/workflows/pages.yml`. Nothing about it is a mock-up: the camera runs, the models load, the pulse comes out of your own face.
+
+It is a **static export with no server behind it**, which is possible because none of the measurement was ever on a server. The signal processing is arithmetic in the browser and the models are files, so a static host serves the whole of it. What a keyless build loses is exactly three things — Claude's replies, Polly's voice and the S3 mirror — and the site says so in a line across the top rather than leaving somebody to read a silent assistant as a broken product.
+
+```bash
+npm run build:static                        # → out/, for a domain root
+BASE_PATH=/repo npm run build:static        # → out/, for a project page
+```
+
+Two details make that work, and both are the sort of thing that fails silently rather than loudly:
+
+- **`output: "export"` will not build with route handlers in the tree**, because a POST handler cannot be a file. `scripts/build-static.mjs` parks `src/app/api` under a leading underscore for the duration of the build — the App Router's own convention for a folder that is not a route — and restores it in a `finally` that also runs on Ctrl-C.
+- **Next rewrites only the paths it controls.** `<Link>`, the router and its own chunks get the base path; a string handed to `fetch`, to `audioWorklet.addModule`, to MediaPipe's fileset resolver or to an `<img src>` does not, because Next never sees it. Those are precisely the paths carrying the three task models, the capture worklet and the presenter photographs — so under a project-page path the site would render perfectly and measure nothing at all. Every one of them goes through `asset()` in `src/lib/paths.ts`, and `tests/paths.test.ts` walks the source for absolute public paths that skipped it, because no amount of type-checking catches this one.
+
+The exported site is verified the same way the server build is: `VERIFY_BASE_URL=… npm run verify:browser` drives the real thing under its base path, and all 131 checks pass against the static copy — the camera opens, the face landmarker initialises from our own origin, the worklet loads, the signer draws.
+
+---
+
 ## Deploying to AWS Amplify
 
 `amplify.yml` is included. In the Amplify console, connect the repository and add the environment variables above under **App settings → Environment variables**. Amplify detects Next.js and provisions the SSR runtime for the API routes automatically.
 
 The IAM user needs `AmazonPollyFullAccess` and, if you enable history, `AmazonS3FullAccess`. Anthropic is called directly rather than through Bedrock, which avoids Bedrock's model-region availability constraints.
+
+Amplify is the deployment to choose when you want the **whole** product rather than the demonstration: it runs the Next server, so the route handlers exist and Claude, Polly and the history mirror all work. The Pages deployment above is the same application with those three switched off.
 
 ---
 

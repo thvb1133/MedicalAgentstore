@@ -36,9 +36,15 @@ jobs:
 
       - run: npm ci
 
-      # Enables Pages on first run rather than requiring somebody to find the
-      # setting, and tells us the URL the site will be served from.
+      # Turns Pages on by itself where the token is allowed to, which needs
+      # administration rights it is not always given. Where it is refused the
+      # build carries on: the base path of a project page is the repository
+      # name, which we already know, and the only thing actually missing is a
+      # site to publish to — which is one setting, Pages → Source → GitHub
+      # Actions. Failing the whole build over it would hide the twenty checks
+      # below that are worth running either way.
       - id: pages
+        continue-on-error: true
         uses: actions/configure-pages@v5
         with:
           enablement: true
@@ -54,7 +60,7 @@ jobs:
 
       - run: npm run build:static
         env:
-          BASE_PATH: ${{ steps.pages.outputs.base_path }}
+          BASE_PATH: ${{ steps.pages.outputs.base_path || format('/{0}', github.event.repository.name) }}
 
       - uses: actions/upload-pages-artifact@v3
         with:
