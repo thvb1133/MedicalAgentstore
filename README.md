@@ -14,11 +14,11 @@ Every agent reports a confidence score and **refuses to display a number it cann
 
 | Agent | What it measures | Cloud keys needed |
 |---|---|---|
-| **Contactless Vitals** | Heart rate, HRV (SDNN, RMSSD), breathing rate, stress index, calibrated blood pressure | None |
-| **Alertness & Gaze** | PERCLOS, blink rate and duration, yawns, head nodding, gaze direction, fatigue score | None |
+| **Contactless Vitals** | Heart rate, HRV (SDNN, RMSSD), breathing rate, stress index, calibrated blood pressure, breath-to-heart coherence with a guided breathing coach | None |
+| **Alertness & Gaze** | PERCLOS, blink rate and duration, yawns, head nodding, gaze direction, fatigue score, cognitive load from pupil, blinks and gaze scan | None |
 | **Tremor & Finger Tapping** | Tremor frequency and amplitude by FFT, tap rate, amplitude decrement, rhythm variability | None |
 | **FAST Stroke Check** | Face asymmetry, arm drift, speech clarity | None |
-| **Live Wellness Companion** | Everything the vitals agent measures, plus voice acoustics — pitch, jitter, shimmer, harmonics-to-noise, speech rate, pausing — during a spoken conversation | Claude to talk back; Polly to be heard. Measurement works without either. |
+| **Live Wellness Companion** | Everything the vitals agent measures, plus voice acoustics — pitch, jitter, shimmer, harmonics-to-noise, speech rate, pausing — during a spoken conversation, and the face and voice read together | Claude to talk back; Polly to be heard. Measurement works without either. |
 
 All measurement runs in the browser. **No video frame or audio sample ever leaves your device** — only derived numbers are sent, and only when a cloud feature is switched on.
 
@@ -51,11 +51,11 @@ npm run dev
 Open <http://localhost:3000>. Camera access requires `localhost` or HTTPS.
 
 ```bash
-npm test              # 292 tests against synthetic signals with known ground truth
+npm test              # 485 tests against synthetic signals with known ground truth
 npm run typecheck
 npm run lint
 npm run build
-npm run verify:browser  # 82 checks in a real Chrome; needs the dev server running
+npm run verify:browser  # 131 checks in a real Chrome; needs the dev server running
 ```
 
 `verify:browser` covers what the unit tests structurally cannot. It serves the
@@ -72,6 +72,15 @@ flips the theme to confirm the page repaints and remembers. It uploads a
 photograph and reads the presenter's jaw over sixty frames to prove that an
 uploaded face is genuinely animated rather than merely drawn, and opens the
 assistant dock on two unrelated routes to confirm it is mounted site-wide.
+
+The later additions get the same treatment, and for the same reason: each of
+them can render a plausible-looking panel while measuring nothing. So it
+samples the breathing pacer across a cycle to prove the ring is actually
+moving and switches its pace to confirm the period changes with it, asserts
+the cognitive-load panel names its three channels and shows no score before a
+baseline exists, drives the eye switch and the fingerspelling reader in access
+mode, and seeds a fortnight of history to check that the journal and the drift
+cards say something specific about it and can be read aloud.
 
 `fetch-models` copies the MediaPipe WASM runtime out of `node_modules` and downloads the three `.task` models into `public/mediapipe`. If you skip it the app falls back to the Google CDN, but running it means a venue's wifi failing cannot take your demo down.
 
@@ -136,6 +145,36 @@ The output is deliberately blunt — even, normal variation, or uneven — and i
 Melanin sits above the vessels and absorbs strongly at exactly the wavelengths the green-channel contrast lives at, so on darker skin less light reaches the blood and less of what returns survives the trip out. The pulse is still there; there is less of it above the noise floor. This is documented, and not something anybody fixes in a weekend.
 
 What can be done is refusing to hide it. Skin tone is estimated per reading as an [Individual Typology Angle](https://doi.org/10.1111/j.1600-0846.2006.00212.x) over CIELAB, collapsed to three bands, and used to add a sentence saying the confidence will run lower and why. Two constraints are load-bearing: the estimate **never** changes a reported value — it is not a correction factor, because a correction fitted to nobody's data would be an invented number dressed as fairness — and it is **never stored**, never attached to a report and never sent anywhere. It is computed from pixels already in memory, used to pick a sentence, and discarded.
+
+---
+
+## Signals made by combining the others
+
+Three measures here are not read off the video directly. They come from putting two or three of the existing streams beside each other, which is worth doing when the combination is better evidence than any single channel — and worth being careful about, because a derived number inherits every weakness of what it was derived from without looking like it does.
+
+### Cognitive load, from the eyes
+
+Three ocular signs move together when somebody is working hard mentally, and human-factors research has used them this way since the 1960s: the pupil dilates a few percent ([Kahneman & Beatty, 1966](https://doi.org/10.1126/science.154.3756.1583)), spontaneous blinking is suppressed while attention is engaged, and the gaze scan tightens onto fewer places.
+
+The pupil is the hard one, and the face mesh does not provide it. MediaPipe's 478 points track the *iris* boundary, and the iris does not change size — the pupil inside it does. So the landmarks only say where to look and the size comes out of the pixels: the fraction of the iris disc that is dark, which is scale-free and therefore does not need to know how far away the person is sitting. On a dark brown iris the boundary is genuinely not there to be found, and at ordinary webcam framing an iris is about fifteen pixels across, so the contrast between pupil and iris is returned alongside the ratio and the channel is dropped when it is too flat to separate.
+
+Everything is relative to a baseline captured from the same person, in the same light, ten seconds earlier. There is no absolute pupil size that means "working hard", and the light reflex is an order of magnitude larger than the effort response — so a change in face brightness past 12% suspends the pupil channel outright rather than reading the room's lighting as concentration. A channel whose baseline is not trustworthy is dropped **and said to be dropped**: the confidence figure is the summed weight of the channels that survived, so a score resting on gaze alone announces itself as a quarter-strength score instead of looking identical to one with all three.
+
+This is an interface and attention measure. It is not a measure of intelligence, honesty, emotion, or fitness to do anything, and the panel says so.
+
+### Expression and voice, read together
+
+There is a strong claim and a weak claim available from a face plus a microphone, and only the weak one is made. The strong claim — that this reveals what somebody feels — is not supported: the largest review of the evidence ([Barrett et al., 2019](https://doi.org/10.1177/1529100619832930)) found people do not reliably move their faces the same way when experiencing the same emotion, and adding a microphone does not repair that.
+
+The weak claim is still worth making. Two independent channels agreeing about something observable is much better evidence than one channel alone. So what comes out is a description of *signals* — how animated the face and the voice are, and whether they tend pleasant or unpleasant — with an explicit agreement figure between them. A tense jaw with a relaxed voice is a genuinely ambiguous observation and is reported as one rather than averaged into a confident middle. Nothing here is labelled a mood.
+
+### Breath-to-heart coherence, and the coach
+
+Heart rate is not steady even at rest: it rises on the in-breath and falls on the out-breath, mediated by the vagus nerve. Breathing slowly and evenly at around six a minute pulls the whole cardiovascular system into step and the beat-to-beat interval traces a clean oscillation near 0.1 Hz. Coherence is how concentrated the variability spectrum is around that single peak, in the sense the biofeedback literature uses it ([Lehrer & Gevirtz, 2014](https://doi.org/10.3389/fpsyg.2014.00756)).
+
+One thing is added to the usual definition. Because the breath itself is visible in the head movement the camera already tracks, the heart's slow rhythm can be checked against the *measured* breathing rate rather than assumed to be following it — which separates "your heart rate is oscillating tidily" from "your heart is following your breath", and only the second is what a breathing exercise trains.
+
+The coach is the closed loop: a ring that expands and holds and contracts on a selectable pace, with the coherence figure moving live beside it. It is not a measure of health, of emotional state, or of how well somebody is meditating. It shows you your own physiology responding to how you breathe, which is interesting to watch and is the whole of the claim.
 
 ---
 
@@ -268,6 +307,22 @@ For people who are Deaf, hard of hearing, or cannot speak:
 
 - **On-screen signing**, as an option rather than a default, at three levels: off, fingerspelling alone, or the full signer falling back to spelling. See the section above for what each is and what it is not. The caption stays on in every case.
 
+### Spelling to the camera
+
+The signing above is output. This is the other direction, and it exists because of one observation: the health side of this application is already running landmark detection on every frame, so somebody signing to it is already being tracked. Reading their hand costs one more pass over twenty-one points, and their pulse comes out of the same frames at the same time. The accessibility path and the sensing path share one camera rather than competing for a second one.
+
+Handshapes are matched on ratios measured within the hand — a finger's straightness against its own length, gaps against the width of the palm — so the reading does not change with how close the hand is or how it is turned. A letter is committed after being held steadily rather than on the first frame that matches, because a hand travelling between two letters passes through several others on the way.
+
+What it refuses is as important as what it reads. J and Z are movements rather than shapes and are not guessed from a still pose. M, N, S and T differ mainly in where the thumb sits inside a closed fist, which one camera cannot see, so they are declined rather than picked between. And this is fingerspelling, not sign language: the manual alphabet is a small borrowed corner of ASL used for names and unfamiliar words, and reading letters is not understanding signing.
+
+### Eyes as an input device
+
+For somebody who cannot speak, sign, or use their hands, the eye tracking built for the drowsiness and neurological checks is — with nothing added to it — a working switch interface. Same landmarks, two very different uses.
+
+Two ways in, because the right one depends on what the person can control. **Gaze**: look left or right to move the highlight, hold still on a choice to take it. Fast, but it needs reliable horizontal eye control. **Scanning**: the highlight steps through the choices by itself and one deliberate action takes whichever is lit. That is the standard assistive-technology fallback and it needs exactly one reliable movement — here, holding the eyes shut.
+
+The thing that makes a blink switch usable at all is telling a deliberate closure from an ordinary one. Spontaneous blinks run 100 to 300 ms; a closure held past half a second is almost never accidental, and everything shorter is ignored rather than debated. After a choice is taken the switch stays muted until the eyes are confirmed open again, because otherwise one long closure walks the whole way down the menu.
+
 ---
 
 ## The assistant in the corner
@@ -307,6 +362,20 @@ The theme is applied by a small inline script in the document head, before first
 - Claude can read the sequence, and is instructed to say which comparisons the signal quality does not support.
 
 Local `localStorage` is the source of truth. The S3 mirror is optional and only for using more than one machine; neither store ever holds a frame of video or a second of audio.
+
+### Your own baseline, not a population's
+
+"Normal resting heart rate is 60 to 100" is true of a population and close to meaningless for an individual. Somebody whose resting rate has been 52 for years is not reassured by being told they are normal, and somebody at 88 who has always been 64 is not warned by it. Both facts are only visible against their own earlier readings, which is the whole reason a history exists here.
+
+So each metric gets a baseline built from that person's own past sessions, and the latest reading is described by how far it sits from it in units of their ordinary variation. Median and median-absolute-deviation rather than mean and standard deviation, because a handful of bad sessions should not be able to move the centre or inflate the spread. It needs at least five usable readings spread over at least three separate days — one long sitting is not a baseline.
+
+The floor is the other half of the honesty. A camera resolves heart rate to a few beats a minute at best, so somebody whose readings happen to cluster tightly must not have everything afterwards called unusual because their apparent spread was narrower than the instrument's own error. Each metric carries a resolution below which differences are attributed to the method rather than to the person, and blood pressure's is deliberately set at 10 mmHg, which is roughly what the published clinical evaluation of camera blood pressure achieves. Where a spread came from the floor rather than from the person, the card says so.
+
+### The week, written out
+
+One scan is an anecdote, and nobody is going to read a fortnight of tables. So the history page writes the paragraph: how often you measured, what moved against your baseline, and how many sessions were too unreliable to count. It can be read aloud, through Polly where it is configured and the browser's own speech synthesis otherwise, which makes it usable without reading the screen.
+
+It is composed in `src/lib/journal.ts` rather than by Claude, on purpose. A summary of somebody's health measurements is exactly the wrong place for a model to improvise, because the failure mode is a fluent sentence containing a number nobody measured. Claude is offered the finished text to read and to answer questions about; it does not get to write it.
 
 ---
 
@@ -381,16 +450,21 @@ The IAM user needs `AmazonPollyFullAccess` and, if you enable history, `AmazonS3
 ```
 src/
   lib/signal/       fft, filters, rppg, peaks      — pure, no DOM, no React
-  lib/vitals/       engine, bloodPressure
+  lib/vitals/       engine, bloodPressure, coherence
   lib/alertness/    engine                          — PERCLOS, blinks, gaze
   lib/motor/        engine                          — tremor, tapping
   lib/fast/         engine                          — face, arms, speech
   lib/voice/        engine                          — F0, jitter, shimmer, HNR
-  lib/vision/       mediapipe loading, face regions
+  lib/cognition/    load                            — pupil, blinks, gaze scan
+  lib/affect/       multimodal                      — face and voice, together
+  lib/access/       switch                          — gaze and blink as input
+  lib/baseline      each person against themselves
+  lib/journal       the week, written out
+  lib/vision/       mediapipe loading, face regions, pupil
   lib/conversation  shared types, sensor-to-prose renderer, the system prompt
   lib/avatar/       presets, voices, languages, the saved profile
   lib/avatar/       warp, faceRig, visemes, life, presenter  — the talking face
-  lib/sign/         the hand rig, the manual alphabet, spelling timing
+  lib/sign/         the hand rig, the manual alphabet, spelling timing, reading it back
   lib/appointments  booking rules and RFC 5545 calendar export
   lib/history       local store, merge with S3, trend building
   lib/agents/       the agent catalogue
