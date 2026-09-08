@@ -68,7 +68,10 @@ also drives the avatar picker, books and cancels an appointment, seeds a
 history to confirm that a low-quality reading is shown in the list but kept out
 of the trend, reads the pixels of the signer and of every fingerspelled handshape to prove the
 hand model actually draws rather than silently producing an empty canvas, and
-flips the theme to confirm the page repaints and remembers.
+flips the theme to confirm the page repaints and remembers. It uploads a
+photograph and reads the presenter's jaw over sixty frames to prove that an
+uploaded face is genuinely animated rather than merely drawn, and opens the
+assistant dock on two unrelated routes to confirm it is mounted site-wide.
 
 `fetch-models` copies the MediaPipe WASM runtime out of `node_modules` and downloads the three `.task` models into `public/mediapipe`. If you skip it the app falls back to the Google CDN, but running it means a venue's wifi failing cannot take your demo down.
 
@@ -122,7 +125,7 @@ The companion mirrors the shape of a hackathon project that assembled seven comm
 |---|---|---|
 | Shen.AI SDK — camera vitals | Our own rPPG engine | Already built, and open. Shen's own clinical report puts camera blood pressure at 10.18 mmHg mean error with a 0.38 correlation, so the cuff calibration is not optional there either. |
 | Thymia — voice biomarkers | Our own acoustic engine | The underlying measures are standard phonetics, not a trade secret. What a vendor adds is a trained mapping onto clinical labels, which is exactly the part we decline to make. |
-| Anam — photoreal video avatar | An abstract presence | Not only cost. A synthetic face on a tool that measures your body and discusses it invites being read as a clinician. An abstract presence cannot be mistaken for a person, which is the honest position for something that is not one. It pulses in time with your measured heart rate. |
+| Anam — photoreal video avatar | A photoreal presenter, rendered here | A generated face, warped on a canvas from a landmark mesh found at build time, with lip shapes derived from the reply text and their amplitude from the audio. No streaming video service, no per-minute cost, and it works with the network off. The abstract presence is still there for anyone who would rather not be talked to by a face. |
 | Agora ConvoAI — orchestration | An in-browser turn loop | Turn-taking is a silence timer and a state machine. Doing it locally removes a paid dependency and forces the two hard parts to be explicit: deciding when someone has finished speaking, and stopping the assistant from hearing itself. |
 | OpenAI GPT | **Claude** | |
 | ElevenLabs TTS | **Amazon Polly** | Neural voices |
@@ -134,22 +137,34 @@ Net effect: seven paid providers reduced to two, and the two that remain are one
 
 ## Choosing a companion
 
-Six presences, each a distinct silhouette rather than a recolour, drawn live on a canvas. All of them pulse in time with the heart rate the camera is reading, using a pulse-wave shape rather than a sine, and fall back to a slow breathing rhythm — deliberately far below any plausible pulse — when there is no measurement to show.
+Six companions, each pairing a manner of speaking with a face.
 
 | | Manner | Default voice |
 |---|---|---|
-| **Asha** | Warm and steady | Amy, British English |
-| **Vikram** | Calm and precise; names the measurement before interpreting it | Arthur, British English |
-| **Tara** | Gentle and unhurried, built for older users | Ruth, slow and clear |
+| **Maya** | Warm and steady | Amy, British English |
+| **Daniel** | Calm and precise; names the measurement before interpreting it | Arthur, British English |
+| **Grace** | Gentle and unhurried, built for older users | Ruth, slow and clear |
 | **Pip** | Simple and encouraging, built for children | Ivy, a child's voice |
-| **Kiran** | Everyday Indian English | Kajal, Indian English |
-| **Nova** | Brisk, minimal small talk | Stephen, American English |
+| **Sofia** | Friendly and direct; follows you between languages | Emma, British English |
+| **Nova** | Brisk, minimal small talk | Joanna, American English |
 
-Each has both an **illustrated portrait** and an **abstract presence**, and which one you see is a setting rather than a decision made for you. A face is easier to sit with for ten minutes and is what most people expect; a shape does not imply a person who never said any of this, which some people prefer from something handing them health information.
+The five presenters are generated portraits of people who do not exist, and they are spread across the world rather than clustered in one part of it. That is not decoration. Somebody who has never been offered a default that looks like them notices, and a tool that measures your body is a poor place to keep that record going.
 
-You can also **upload your own picture**. It is cropped, scaled and re-encoded in the browser and kept in `localStorage`. It never leaves the device — a face is biometric data and is frequently a photograph of someone other than the person uploading it — and the re-encode drops the EXIF block, which on a phone photograph carries the GPS coordinates where it was taken.
+Pip is drawn rather than photographed, and does not talk. Pip is the companion offered to children, and a photoreal synthetic child is not something this puts on screen.
 
-**The portraits do not lip-sync, and that is a decision rather than a gap.** Driving a mouth on a face from an audio envelope is the deepfake technique, differing only in intent. On a tool that says things like "your blood pressure looks raised", a face that appears to be speaking borrows the authority of a clinician who never said any of it — and someone who uploads a photograph of their own doctor would be making that face say things the person it belongs to never agreed to. The heartbeat ring, the voice-tracking rim and the thinking sweep carry the movement instead, which is the same information the abstract presence carried.
+### How the face moves
+
+Each portrait has a 478-point face mesh found once at build time by `scripts/build-face-rigs.mjs`, which runs MediaPipe's face landmarker in headless Chrome and commits the result to `src/lib/avatar/rigs.json`. Nothing is downloaded at runtime and the same picture always produces the same rig.
+
+At playback, two lattices over the mouth and one over each eye are displaced and redrawn triangle by triangle. Both edges of every patch are pinned to the untouched photograph, so a warp cannot tear a seam across the face. The shapes come from the reply text — graphemes mapped to visemes, fitted to the measured length of the audio — and their **amplitude** from a Web Audio analyser on the speech itself. Text alone gives a mouth that keeps moving through a pause; loudness alone gives a jaw flapping on a fixed shape. Text sets what the mouth is doing and loudness sets how much, which is also why a language whose script has no letter-to-mouth mapping still animates, on loudness alone.
+
+Blinking and a slow drift of the head run underneath, on periods that share no common multiple so the idle never reads as a loop.
+
+### Your own picture
+
+You can **upload a photograph** and it becomes a presenter the same way. The picture is cropped, scaled and re-encoded in the browser and kept in `localStorage`; it never leaves the device, and the re-encode drops the EXIF block, which on a phone photograph carries the GPS coordinates where it was taken. The mesh is found on the device too, once, cached against a hash of the picture. A photograph the mesh cannot read — badly lit, in profile, sunglasses — is not an error: it is shown still, with a note saying why.
+
+**The face will appear to speak, and that is worth being plain about.** Driving a mouth from audio is the deepfake technique and differs only in intent. On something that says "your blood pressure looks raised", a face that appears to say it is saying it in that person's name. The upload control says so at the point of upload rather than in a policy page, every presenter carries an "AI avatar" badge that cannot be turned off, and the built-in faces belong to nobody precisely so that the default carries none of this weight.
 
 Speaking rate is adjustable from 60% to 125% through SSML prosody. The range is asymmetric on purpose: slowing down helps anyone hard of hearing, anyone reading captions alongside the audio, and anyone meeting an accent for the first time, while speeding past about 125% slurs the neural voices and helps almost nobody.
 
@@ -233,11 +248,25 @@ For people who are Deaf, hard of hearing, or cannot speak:
 
 ---
 
+## The assistant in the corner
+
+Every page here measures one thing and explains that one thing. The questions people actually have are rarely scoped that neatly — *is 118 over 76 alright*, *why does it keep saying low confidence*, *what is HRV* — and making somebody finish a reading before they can ask is the wrong shape. So there is an assistant in the bottom-left corner of every route, mounted in the root layout so its conversation survives navigation rather than being rebuilt on each click.
+
+Bottom **left**, not right. Support widgets live on the right, and this is not one; more practically the right-hand side is where these pages put their own controls, and a floating panel over them would cover the thing being asked about.
+
+It takes typing or speech and answers in voice and text. Where it differs from the measurement agents is language: they pin one, because somebody mid-reading who has chosen Hindi and says one English word should not have the conversation switch under them. The dock does the opposite and **replies in whatever language the question arrived in**, which is the only way to cover languages the picker does not list.
+
+It has no access to the sensors, deliberately. A panel that can be opened from the history page while a measurement runs elsewhere should not narrate numbers it cannot see. It answers questions; the agents interpret readings.
+
+---
+
 ## Morning and night
 
 Both themes are real palettes rather than one inverted. Shadow does the separating work in a light interface where borders do it in a dark one, and the accents are darkened for the light theme because the saffron that reads as bright against near-black falls below 4.5:1 against white.
 
-Night is the default because the camera preview and the pulse trace carry the visual weight and both read better against a dark field. Morning exists because a dark interface is genuinely harder for a good many people to read — particularly older eyes and anyone with astigmatism, for whom light text on dark smears — and because these pages get used in daylight next to a window. When nothing has been chosen, the operating system preference wins: someone who has set their whole machine to light mode has already said what they want.
+Morning is the default. A dark interface is genuinely harder for a good many people to read — particularly older eyes and anyone with astigmatism, for whom light text on dark smears — and these pages get used in daylight next to a window. Night exists because the camera preview and the pulse trace do carry more weight against a dark field, and because plenty of people simply prefer it.
+
+The default does not follow the operating system. That is a product decision rather than a technical one: light is the face of the thing, it is what the screenshots show, and a first-time visitor on a machine set to dark should see the interface as it was designed. One click changes it, and the choice is remembered from then on.
 
 The theme is applied by a small inline script in the document head, before first paint. A toggle that waits for React has already let the browser paint one frame of the wrong theme, which is the white flash that every dark-mode site with a client-side toggle gets wrong.
 
@@ -337,20 +366,22 @@ src/
   lib/voice/        engine                          — F0, jitter, shimmer, HNR
   lib/vision/       mediapipe loading, face regions
   lib/conversation  shared types, sensor-to-prose renderer, the system prompt
-  lib/avatar/       presets, voices, languages, portraits, the saved profile
+  lib/avatar/       presets, voices, languages, the saved profile
+  lib/avatar/       warp, faceRig, visemes, life, presenter  — the talking face
   lib/sign/         the hand rig, the manual alphabet, spelling timing
   lib/appointments  booking rules and RFC 5545 calendar export
   lib/history       local store, merge with S3, trend building
   lib/agents/       the agent catalogue
   lib/server/       config; the only place secrets are read
   hooks/            camera, face/hand/pose tracking, vitals, voice, conversation, profile
+  components/assistant  the dock that sits on every page
   components/       UI, one component per agent
   app/appointments  booking and upcoming sessions
   app/history       past readings, trends, Claude's review
   app/sign          the signing studio, the lexicon, and the alphabet chart
   app/api/          converse + interpret (Claude), speak (Polly), sessions (S3), services
 public/audio/       the capture worklet, which runs on the audio thread
-public/portraits/   the six illustrated companion faces
+public/portraits/   five generated presenter photographs, and Pip's drawing
 tests/              synthetic signal generators and the suite
 ```
 

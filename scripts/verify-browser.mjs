@@ -25,6 +25,14 @@ const CHROME =
     "/usr/bin/chromium-browser",
   ].find(existsSync);
 
+/**
+ * A face to upload, when checking that an uploaded photograph animates.
+ *
+ * One of the shipped presenter portraits, which means the check needs no
+ * fixture of its own and the picture is unambiguously of nobody.
+ */
+const SAMPLE_FACE = "public/portraits/nova.photo.webp";
+
 const results = [];
 function record(name, ok, detail = "") {
   results.push({ name, ok });
@@ -338,8 +346,8 @@ async function main() {
       /never uploaded/i.test(picker?.text ?? ""),
     );
     record(
-      "the portrait upload says the face does not lip-sync",
-      /deepfake/i.test(picker?.text ?? ""),
+      "the portrait upload says the face will be made to speak",
+      /will appear to speak/i.test(picker?.text ?? ""),
     );
 
     // Changing language has to move the voice with it.
@@ -382,7 +390,7 @@ async function main() {
       const dialog = document.querySelector('[role="dialog"]');
       if (!dialog) return false;
       const target = [...dialog.querySelectorAll("button")].find((b) =>
-        b.textContent?.includes("Tara"),
+        b.textContent?.includes("Grace"),
       );
       if (!target) return false;
       target.click();
@@ -394,12 +402,145 @@ async function main() {
     });
     await new Promise((r) => setTimeout(r, 500));
     const afterSwitch = await page.evaluate(() => document.body.innerText);
-    record("choosing an avatar takes effect", switched && /Talk to Tara/.test(afterSwitch));
+    record("choosing an avatar takes effect", switched && /Talk to Grace/.test(afterSwitch));
 
     await page.reload({ waitUntil: "networkidle0" });
     await new Promise((r) => setTimeout(r, 800));
     const afterReload = await page.evaluate(() => document.body.innerText);
-    record("the choice survives a reload", /Talk to Tara/.test(afterReload));
+    record("the choice survives a reload", /Talk to Grace/.test(afterReload));
+
+    // The presenters must be a roster rather than five variations on one
+    // person, because a health tool defaulting to one part of the world is a
+    // thing people notice about themselves.
+    await page.evaluate(() => {
+      [...document.querySelectorAll("button")]
+        .find((b) => b.textContent?.trim() === "Change avatar")
+        ?.click();
+    });
+    await new Promise((r) => setTimeout(r, 900));
+
+    const roster = await page.evaluate(() => {
+      const dialog = document.querySelector('[role="dialog"]');
+      const names = ["Maya", "Daniel", "Grace", "Sofia", "Nova", "Pip"];
+      const text = dialog?.textContent ?? "";
+      return {
+        present: names.filter((n) => text.includes(n)).length,
+        looks: [...(dialog?.querySelectorAll("button") ?? [])]
+          .map((b) => b.textContent?.trim())
+          .filter((t) => t === "A face" || t === "A shape").length,
+        // Only a talking presenter publishes its jaw, so this counts the
+        // animated ones rather than every canvas in the grid.
+        presenters: [...(dialog?.querySelectorAll("canvas") ?? [])].filter(
+          (c) => c.dataset.jaw !== undefined,
+        ).length,
+        // The disclosure is not optional and is not behind a disclosure
+        // triangle: it sits on the tile.
+        badges: [...(dialog?.querySelectorAll("*") ?? [])].filter(
+          (e) => e.childElementCount === 0 && e.textContent?.trim() === "AI avatar",
+        ).length,
+      };
+    });
+    record("all six companions are offered", roster.present === 6, `${roster.present}/6`);
+    record("the look is a face or a shape", roster.looks === 2);
+    record(
+      "the five presenters are animated, and Pip is not",
+      roster.presenters === 5,
+      `${roster.presenters} canvases`,
+    );
+    record("every presenter is badged as an AI avatar", roster.badges >= 5, `${roster.badges} badges`);
+
+    // A photograph somebody uploads has to become a presenter too — the mesh
+    // is found here in the browser rather than at build time — and the
+    // warning about whose face it is has to be at the point of upload.
+    const consent = await page.evaluate(
+      () => document.querySelector('[role="dialog"]')?.textContent ?? "",
+    );
+    record(
+      "uploading warns about using someone else's face",
+      /will appear to speak/i.test(consent) && /agreement/i.test(consent),
+    );
+
+    const upload = await page.$('input[type="file"]');
+    if (upload) {
+      const before = await page.evaluate(
+        () =>
+          [
+            ...(document.querySelector('[role="dialog"]')?.querySelectorAll("canvas") ?? []),
+          ].filter((c) => c.dataset.jaw !== undefined).length,
+      );
+      await upload.uploadFile(SAMPLE_FACE);
+      await page
+        .waitForFunction(
+          () => {
+            const text = document.querySelector('[role="dialog"]')?.textContent ?? "";
+            return /animated from your picture/i.test(text) || /No face found/i.test(text);
+          },
+          { timeout: 90000 },
+        )
+        .catch(() => undefined);
+
+      const uploaded = await page.evaluate(() => {
+        const text = document.querySelector('[role="dialog"]')?.textContent ?? "";
+        const cached = localStorage.getItem("sanjivani-setu.portrait-rig.v1");
+        return {
+          animated: /animated from your picture/i.test(text),
+          landmarks: cached ? JSON.parse(cached).rig.points.length : 0,
+        };
+      });
+      record("an uploaded photograph becomes a presenter", uploaded.animated);
+      record(
+        "its face is found in the browser and kept",
+        uploaded.landmarks >= 478,
+        `${uploaded.landmarks} landmarks`,
+      );
+
+      // And the mouth is actually driven, rather than the picture merely
+      // being drawn onto a canvas. Measured on the canvas the upload added,
+      // while its preview line is still playing.
+      const jaw = await page.evaluate(async (previous) => {
+        // Inside the dialog only: the last presenter on the page is the live
+        // tile behind it, which is idle and correctly not moving its mouth.
+        const find = () =>
+          [...(document.querySelector('[role="dialog"]')?.querySelectorAll("canvas") ?? [])].filter(
+            (c) => c.dataset.jaw !== undefined,
+          );
+        // The attribute is written by the animation loop, so a canvas that
+        // has only just mounted does not have one yet.
+        for (let i = 0; i < 120 && find().length <= previous; i++) {
+          await new Promise((r) => requestAnimationFrame(r));
+        }
+        const tiles = find();
+        if (tiles.length <= previous) return null;
+        const tile = tiles[tiles.length - 1];
+        tile.scrollIntoView({ block: "center" });
+        const seen = [];
+        for (let i = 0; i < 60; i++) {
+          seen.push(Number(tile.dataset.jaw));
+          await new Promise((r) => requestAnimationFrame(r));
+        }
+        return { max: Math.max(...seen), distinct: new Set(seen.map((v) => v.toFixed(3))).size };
+      }, before);
+      record(
+        "the uploaded face actually moves its mouth",
+        jaw !== null && jaw.max > 0.1 && jaw.distinct > 5,
+        jaw ? `max jaw ${jaw.max}, ${jaw.distinct} distinct` : "no presenter canvas",
+      );
+
+      await page.evaluate(() => {
+        [...(document.querySelector('[role="dialog"]')?.querySelectorAll("button") ?? [])]
+          .find((b) => b.textContent?.trim() === "Remove")
+          ?.click();
+      });
+    } else {
+      record("an uploaded photograph becomes a presenter", false, "no file input");
+    }
+
+    await page.evaluate(() => {
+      [...(document.querySelector('[role="dialog"]')?.querySelectorAll("button") ?? [])]
+        .find((b) => b.textContent?.trim() === "Done")
+        ?.click();
+    });
+    await new Promise((r) => setTimeout(r, 300));
     record(
       "avatar picker ran without console errors",
       consoleErrors.length === 0,
@@ -690,6 +831,27 @@ async function main() {
 
     console.log("\nTheme");
     consoleErrors.length = 0;
+
+    // The default has to be light, on a machine whose OS preference is dark.
+    // Reading it from a fresh context is the only honest way to check, since
+    // by this point the run has already stored a choice.
+    const fresh = await browser.createBrowserContext();
+    const freshPage = await fresh.newPage();
+    await freshPage.emulateMediaFeatures([
+      { name: "prefers-color-scheme", value: "dark" },
+    ]);
+    await freshPage.goto(`${BASE}/`, { waitUntil: "networkidle0" });
+    const firstVisit = await freshPage.evaluate(() => ({
+      theme: document.documentElement.getAttribute("data-theme"),
+      background: getComputedStyle(document.body).backgroundColor,
+    }));
+    await fresh.close();
+    record(
+      "a first visit is light, whatever the machine prefers",
+      firstVisit.theme === "morning",
+      `${firstVisit.theme} · ${firstVisit.background}`,
+    );
+
     const theme = await page.evaluate(async () => {
       const root = document.documentElement;
       const readBackground = () => getComputedStyle(document.body).backgroundColor;
@@ -882,6 +1044,70 @@ async function main() {
         consoleErrors.slice(0, 2).join(" | ") || `HTTP ${status}`,
       );
     }
+
+    console.log("\nAssistant dock");
+    consoleErrors.length = 0;
+
+    // It has to be on every page, in the corner, and openable — that is the
+    // whole promise of it. Checked on two unrelated routes because being
+    // mounted in the root layout is what makes it true everywhere.
+    for (const path of ["/", "/history"]) {
+      await page.goto(`${BASE}${path}`, { waitUntil: "networkidle0" });
+      const launcher = await page
+        .waitForSelector('button[aria-label^="Ask "]', { timeout: 10000 })
+        .catch(() => null);
+      const where = launcher
+        ? await page.evaluate((el) => {
+            const rect = el.getBoundingClientRect();
+            return { left: rect.left, bottom: window.innerHeight - rect.bottom };
+          }, launcher)
+        : null;
+      record(
+        `the assistant is reachable from ${path}`,
+        where !== null && where.left < 60 && where.bottom < 60,
+        where ? `${Math.round(where.left)}px from the left edge` : "no launcher",
+      );
+    }
+
+    await page.click('button[aria-label^="Ask "]');
+    const dock = await page
+      .waitForSelector('div[role="dialog"][aria-label^="Ask "]', { timeout: 5000 })
+      .catch(() => null);
+    const parts = dock
+      ? await page.evaluate(() => {
+          const el = document.querySelector('div[role="dialog"][aria-label^="Ask "]');
+          if (!el) return null;
+          return {
+            typing: !!el.querySelector('input[aria-label="Your question"]'),
+            // Speech recognition is missing in some browsers, and the button
+            // is hidden rather than shown broken. Headless Chrome has it.
+            speaking: !!el.querySelector('button[aria-label*="Speak"]'),
+            face: !!el.querySelector("canvas"),
+            honest: /not medical advice/i.test(el.textContent ?? ""),
+            languages: /any language/i.test(el.textContent ?? ""),
+          };
+        })
+      : null;
+    record("it takes a typed question", parts?.typing === true);
+    record("it takes a spoken one", parts?.speaking === true);
+    record("the companion's face is in it", parts?.face === true);
+    record("it says what it is not", parts?.honest === true);
+    record("it says it answers in any language", parts?.languages === true);
+
+    // Escape has to close it. A floating panel you can only dismiss by
+    // finding its small close button is a trap for keyboard users.
+    await page.keyboard.press("Escape");
+    await new Promise((r) => setTimeout(r, 300));
+    const closed = await page.evaluate(
+      () => document.querySelector('div[role="dialog"][aria-label^="Ask "]') === null,
+    );
+    record("escape closes it", closed);
+
+    record(
+      "the assistant ran without console errors",
+      consoleErrors.length === 0,
+      consoleErrors.slice(0, 2).join(" | "),
+    );
 
     record("no failing network requests", badStatuses.length === 0, badStatuses.slice(0, 3).join(", "));
   } finally {
