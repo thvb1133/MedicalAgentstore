@@ -84,6 +84,25 @@ export interface ConversationState {
    * listening — so it is safe to call on every detected silence.
    */
   onTurnEnd: () => void;
+  /**
+   * What is being spoken right now, for anything that has to move in time
+   * with it. Polled rather than pushed through state: the presenter wants an
+   * answer on every animation frame, and re-rendering the conversation sixty
+   * times a second to deliver it would be absurd.
+   */
+  readSpeech: () => SpeechFrame | null;
+}
+
+/** A snapshot of the reply currently coming out of the speaker. */
+export interface SpeechFrame {
+  /** The full text being spoken, which the mouth shapes are derived from. */
+  text: string;
+  /** Seconds into playback. */
+  time: number;
+  /** Total length, or null before the browser has decoded enough to know. */
+  duration: number | null;
+  /** Loudness right now, 0 to 1, or null where it cannot be measured. */
+  level: number | null;
 }
 
 interface SpeechRecognitionLike {
@@ -141,6 +160,8 @@ export function useConversation(options: ConversationOptions): ConversationState
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const speechRef = useRef<SpokenReply | null>(null);
+  const analysisRef = useRef<SpeechAnalysis | null>(null);
 
   const finalTextRef = useRef("");
   const interimTextRef = useRef("");
@@ -260,6 +281,9 @@ export function useConversation(options: ConversationOptions): ConversationState
       const url = URL.createObjectURL(blob);
       const audio = new Audio(url);
       audioRef.current = audio;
+      speechRef.current = { text, audio };
+
+      await routeForAnalysis(analysisRef, audio);
 
       await new Promise<void>((resolve) => {
         audio.onended = () => resolve();
@@ -269,9 +293,22 @@ export function useConversation(options: ConversationOptions): ConversationState
 
       URL.revokeObjectURL(url);
       audioRef.current = null;
+      speechRef.current = null;
     },
     [speechEnabled, voiceId, speechRate],
   );
+
+  const readSpeech = useCallback((): SpeechFrame | null => {
+    const current = speechRef.current;
+    if (!current) return null;
+    const { audio, text } = current;
+    return {
+      text,
+      time: audio.currentTime,
+      duration: Number.isFinite(audio.duration) ? audio.duration : null,
+      level: measureLevel(analysisRef.current),
+    };
+  }, []);
 
   const submit = useCallback(
     async (utterance: string) => {
@@ -388,6 +425,7 @@ export function useConversation(options: ConversationOptions): ConversationState
     stopRecognition();
     audioRef.current?.pause();
     audioRef.current = null;
+    speechRef.current = null;
     setStatus("idle");
     setInterim("");
     setPartial("");
@@ -397,6 +435,7 @@ export function useConversation(options: ConversationOptions): ConversationState
     if (statusRef.current !== "speaking") return;
     audioRef.current?.pause();
     audioRef.current = null;
+    speechRef.current = null;
     if (runningRef.current) {
       setStatus("listening");
       startRecognition();
@@ -434,5 +473,71 @@ export function useConversation(options: ConversationOptions): ConversationState
     sendText,
     interrupt,
     onTurnEnd: handleTurnEnd,
+    readSpeech,
   };
+}
+
+interface SpokenReply {
+  text: string;
+  audio: HTMLAudioElement;
+}
+
+interface SpeechAnalysis {
+  context: AudioContext;
+  analyser: AnalyserNode;
+  samples: Uint8Array<ArrayBuffer>;
+}
+
+/**
+ * Route the reply through an analyser so its loudness can be read.
+ *
+ * Routing an element into Web Audio replaces its own output with the graph's,
+ * so if the context will not start the person hears nothing at all. That is a
+ * far worse failure than an unanimated mouth, so the connection is only made
+ * once the context is confirmed running, and every step is allowed to fail
+ * quietly back to plain playback.
+ */
+async function routeForAnalysis(
+  ref: { current: SpeechAnalysis | null },
+  audio: HTMLAudioElement,
+): Promise<void> {
+  try {
+    if (!ref.current) {
+      const Ctor =
+        window.AudioContext ??
+        (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (!Ctor) return;
+      const context = new Ctor();
+      const analyser = context.createAnalyser();
+      analyser.fftSize = 1024;
+      // Enough smoothing that a plosive does not make the jaw snap, little
+      // enough that the mouth still shuts between words.
+      analyser.smoothingTimeConstant = 0.35;
+      analyser.connect(context.destination);
+      ref.current = { context, analyser, samples: new Uint8Array(analyser.fftSize) };
+    }
+
+    const analysis = ref.current;
+    if (analysis.context.state !== "running") await analysis.context.resume();
+    if (analysis.context.state !== "running") return;
+
+    analysis.context.createMediaElementSource(audio).connect(analysis.analyser);
+  } catch {
+    // No analysis. The presenter falls back to the text track alone.
+  }
+}
+
+function measureLevel(analysis: SpeechAnalysis | null): number | null {
+  if (!analysis) return null;
+  analysis.analyser.getByteTimeDomainData(analysis.samples);
+
+  let sum = 0;
+  for (let i = 0; i < analysis.samples.length; i++) {
+    const deviation = (analysis.samples[i] - 128) / 128;
+    sum += deviation * deviation;
+  }
+  const rms = Math.sqrt(sum / analysis.samples.length);
+  // Conversational speech sits around 0.2 RMS, so this puts an ordinary
+  // sentence near the top of the range without clipping every vowel.
+  return Math.min(1, rms * 4.5);
 }

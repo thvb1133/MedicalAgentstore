@@ -7,6 +7,7 @@ import { CameraStage } from "@/components/CameraStage";
 import { CaptionBar } from "@/components/CaptionBar";
 import { CompanionSettings } from "@/components/avatar/CompanionSettings";
 import { PortraitPresence } from "@/components/avatar/PortraitPresence";
+import { hasPresenter, TalkingPresenter } from "@/components/avatar/TalkingPresenter";
 import { SignAvatar } from "@/components/sign/SignAvatar";
 import { SigningAvatar } from "@/components/sign/SigningAvatar";
 import { SKIN_TONES } from "@/components/sign/render";
@@ -255,7 +256,16 @@ export function CompanionAgent({ agent }: { agent: AgentDefinition }) {
 
       <div className="grid gap-4 lg:grid-cols-[300px_1fr_310px]">
         <div className="space-y-4">
-          {profile.presence === "portrait" ? (
+          {profile.presence === "photoreal" && hasPresenter(avatar.id) ? (
+            <TalkingPresenter
+              avatar={avatar}
+              status={conversation.status}
+              readSpeech={conversation.readSpeech}
+              languageCode={profile.languageCode}
+              heartRateBpm={snapshot.heartRateBpm}
+            />
+          ) : profile.presence === "portrait" ||
+            (profile.presence === "photoreal" && !hasPresenter(avatar.id)) ? (
             <PortraitPresence
               avatar={avatar}
               status={conversation.status}

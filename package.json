@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "fetch-models": "node scripts/fetch-models.mjs",
+    "build-face-rigs": "node scripts/build-face-rigs.mjs",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "test:watch": "vitest",

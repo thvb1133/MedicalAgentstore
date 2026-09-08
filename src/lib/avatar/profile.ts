@@ -20,8 +20,8 @@ import { clampRate, getVoice, RATE_DEFAULT, voiceForLanguage } from "./voices";
 /** How prominent the on-screen captions are. */
 export type CaptionMode = "off" | "on" | "large";
 
-/** Whether the companion appears as an illustrated face or an abstract shape. */
-export type PresenceStyle = "portrait" | "abstract";
+/** A photoreal presenter, an illustrated face, or an abstract shape. */
+export type PresenceStyle = "photoreal" | "portrait" | "abstract";
 
 /** Nothing signed, the manual alphabet only, or the full signer. */
 export type SignMode = "off" | "spell" | "sign";
@@ -32,12 +32,14 @@ export interface CompanionProfile {
   ageBand: AgeBand;
   avatarId: string;
   /**
-   * A drawn face, or an abstract shape.
+   * A photoreal presenter, a drawn face, or an abstract shape.
    *
-   * Both are offered rather than one being replaced. A face is easier to sit
-   * with for ten minutes and is what most people expect; a shape does not
-   * imply a person who never said any of this, which some people prefer from
-   * something giving them health information.
+   * All three are offered rather than one replacing the others, because the
+   * trade runs in both directions. A face that looks like a person is far
+   * easier to sit with for ten minutes and is what people now expect from
+   * anything that talks; it also lends whatever it says the credibility of a
+   * person, and some people would rather health information did not arrive
+   * that way. Nobody is in a position to make that choice on their behalf.
    */
   presence: PresenceStyle;
   /**
@@ -83,7 +85,7 @@ const AGE_BANDS: AgeBand[] = ["child", "teen", "adult", "older"];
 const CAPTION_MODES: CaptionMode[] = ["off", "on", "large"];
 const SIGN_TONES = ["light", "medium", "tan", "deep"];
 const SIGN_MODES: SignMode[] = ["off", "spell", "sign"];
-const PRESENCE_STYLES: PresenceStyle[] = ["portrait", "abstract"];
+const PRESENCE_STYLES: PresenceStyle[] = ["photoreal", "portrait", "abstract"];
 
 /** Constrained to what the history route will accept as a key segment. */
 export function generateProfileId(): string {
@@ -102,7 +104,7 @@ export function defaultProfile(): CompanionProfile {
     displayName: "",
     ageBand: "adult",
     avatarId: avatar.id,
-    presence: "portrait",
+    presence: "photoreal",
     languageCode: DEFAULT_LANGUAGE,
     voiceId: avatar.defaultVoiceId,
     speechRate: RATE_DEFAULT,

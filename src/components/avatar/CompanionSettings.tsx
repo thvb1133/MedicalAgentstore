@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { AvatarPresence } from "@/components/AvatarPresence";
 import { PortraitPresence } from "@/components/avatar/PortraitPresence";
+import { hasPresenter, TalkingPresenter } from "@/components/avatar/TalkingPresenter";
 import {
   AGE_BANDS,
   avatarOr,
@@ -193,12 +194,13 @@ export function CompanionSettings({
 
           <Section
             title="Look"
-            detail="A drawn face, or a shape that moves with your pulse and your voice."
+            detail="A presenter who talks, a drawn face, or a shape that moves with your pulse and your voice."
           >
             <div className="mb-3 flex flex-wrap gap-2">
               {(
                 [
-                  ["portrait", "A face"],
+                  ["photoreal", "A presenter"],
+                  ["portrait", "A drawing"],
                   ["abstract", "A shape"],
                 ] as Array<[PresenceStyle, string]>
               ).map(([style, label]) => (
@@ -229,7 +231,14 @@ export function CompanionSettings({
                     }}
                   >
                     <div className="pointer-events-none overflow-hidden rounded-lg">
-                      {profile.presence === "portrait" ? (
+                      {profile.presence === "photoreal" && hasPresenter(option.id) ? (
+                        <TalkingPresenter
+                          avatar={option}
+                          status="idle"
+                          preview={selected ? PREVIEW_LINE : null}
+                        />
+                      ) : profile.presence === "portrait" ||
+                        (profile.presence === "photoreal" && !hasPresenter(option.id)) ? (
                         <PortraitPresence
                           avatar={option}
                           status="listening"
@@ -265,6 +274,8 @@ export function CompanionSettings({
                 );
               })}
             </div>
+
+            {profile.presence === "photoreal" && <PresenterNote avatarId={profile.avatarId} />}
 
             {profile.presence === "portrait" && (
               <PortraitUpload avatar={avatar} portrait={portrait} />
@@ -635,6 +646,34 @@ function Toggle({
  * Saying so here is more use than discovering it later and assuming the
  * feature is broken.
  */
+/**
+ * Why the presenters look real, and where that stops.
+ *
+ * Said here rather than buried in a policy page because this is the moment
+ * somebody is choosing to look at a human face for the next ten minutes, and
+ * it is the only moment at which the distinction between a generated face and
+ * a photograph of a person is something they can act on.
+ */
+function PresenterNote({ avatarId }: { avatarId: string }) {
+  return (
+    <div className="mt-3 rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] p-3.5">
+      <p className="text-[11.5px] leading-relaxed text-[var(--muted)]">
+        These presenters are generated images. Nobody sat for them, and none of them is a real
+        person, which is why they are allowed to move their mouths while they talk. A photograph
+        you upload is treated differently: it stays still, because a face that belongs to somebody
+        should not be made to appear to say things they never said. Uploading is under{" "}
+        <span className="text-[var(--foreground)]">A drawing</span>.
+      </p>
+      {!hasPresenter(avatarId) && (
+        <p className="mt-2 text-[11.5px] leading-relaxed text-[var(--muted)]">
+          Pip has no presenter and is shown as a drawing instead. Pip is the companion offered to
+          children, and a photoreal synthetic child is not something this should put on screen.
+        </p>
+      )}
+    </div>
+  );
+}
+
 function PortraitUpload({
   avatar,
   portrait,
