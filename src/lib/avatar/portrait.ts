@@ -15,8 +15,17 @@
  * portrait frame expects.
  */
 
-/** Stored square size. Large enough for a retina 300px frame, small enough to fit. */
-export const PORTRAIT_SIZE = 384;
+/**
+ * Stored size, four by three.
+ *
+ * Four by three rather than square because the picture is now framed as a
+ * video tile, and a square source in a 4:3 frame has to be cropped top and
+ * bottom — which takes the forehead and chin off exactly the face the mesh
+ * needs to find. Large enough for a retina 320 px tile, small enough that the
+ * base64 of it still fits in the storage budget alongside everything else.
+ */
+export const PORTRAIT_WIDTH = 640;
+export const PORTRAIT_HEIGHT = 480;
 
 /** Refuse anything that would not fit in storage even after re-encoding. */
 export const MAX_UPLOAD_BYTES = 12 * 1024 * 1024;
@@ -38,23 +47,26 @@ export function validateFile(file: File): PortraitError | null {
 }
 
 /**
- * Centre-crop to a square.
+ * Centre-crop to four by three.
  *
  * A portrait taken on a phone is 3:4 and the face sits in the upper half, so
  * a centred crop of a tall image takes the chin off. Biasing the crop window
  * upward on portrait-orientation images keeps the face in frame without
- * needing face detection for what is a one-off cosmetic choice.
+ * needing face detection for what is a one-off framing choice.
  */
 export function cropBox(width: number, height: number) {
-  const size = Math.min(width, height);
-  const x = (width - size) / 2;
-  const tall = height > width;
-  const y = tall ? Math.min((height - size) / 2, height * 0.08) : (height - size) / 2;
-  return { x, y, size };
+  const aspect = PORTRAIT_WIDTH / PORTRAIT_HEIGHT;
+  const wide = width / height > aspect;
+  const w = wide ? height * aspect : width;
+  const h = wide ? height : width / aspect;
+  const x = (width - w) / 2;
+  const tall = !wide;
+  const y = tall ? Math.min((height - h) / 2, height * 0.08) : (height - h) / 2;
+  return { x, y, w, h };
 }
 
 /**
- * Read a file into a square data URL.
+ * Read a file into a four-by-three data URL.
  *
  * Returns WebP where the browser supports it and JPEG otherwise; both are
  * dramatically smaller than a re-encoded PNG, and a PNG of a photograph would
@@ -63,15 +75,15 @@ export function cropBox(width: number, height: number) {
 export async function fileToPortrait(file: File): Promise<string> {
   const bitmap = await createImageBitmap(file);
   try {
-    const { x, y, size } = cropBox(bitmap.width, bitmap.height);
+    const { x, y, w, h } = cropBox(bitmap.width, bitmap.height);
 
     const canvas = document.createElement("canvas");
-    canvas.width = PORTRAIT_SIZE;
-    canvas.height = PORTRAIT_SIZE;
+    canvas.width = PORTRAIT_WIDTH;
+    canvas.height = PORTRAIT_HEIGHT;
     const ctx = canvas.getContext("2d");
     if (!ctx) throw new Error("Could not process the image.");
 
-    ctx.drawImage(bitmap, x, y, size, size, 0, 0, PORTRAIT_SIZE, PORTRAIT_SIZE);
+    ctx.drawImage(bitmap, x, y, w, h, 0, 0, PORTRAIT_WIDTH, PORTRAIT_HEIGHT);
 
     const webp = canvas.toDataURL("image/webp", 0.82);
     // Browsers that cannot encode WebP silently hand back a PNG data URL.

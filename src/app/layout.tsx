@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
+import { AssistantDock } from "@/components/assistant/AssistantDock";
 import { THEME_INIT_SCRIPT } from "@/components/ThemeToggle";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
@@ -13,11 +14,11 @@ export const metadata: Metadata = {
     "Contactless vitals, alertness, tremor and stroke screening from an ordinary laptop camera. Every measurement carries a confidence score.",
 };
 
+// Light is the default the app actually ships with, so the browser chrome
+// should match it rather than following the operating system into dark and
+// leaving a black bar above a white page.
 export const viewport: Viewport = {
-  themeColor: [
-    { media: "(prefers-color-scheme: dark)", color: "#07090d" },
-    { media: "(prefers-color-scheme: light)", color: "#f6f7f9" },
-  ],
+  themeColor: "#f6f7f9",
 };
 
 export default function RootLayout({
@@ -41,6 +42,13 @@ export default function RootLayout({
         */}
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
         {children}
+        {/*
+          Mounted in the root layout rather than on each page, so it is
+          genuinely on every route including ones added later, and so its
+          conversation survives navigation instead of being unmounted and
+          rebuilt every time somebody clicks a link.
+        */}
+        <AssistantDock />
       </body>
     </html>
   );

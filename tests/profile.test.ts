@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { AVATARS, avatarsForAge, getAvatar, voicesForAge } from "@/lib/avatar/presets";
+import {
+  AVATARS,
+  avatarsForAge,
+  getAvatar,
+  RENAMED_AVATARS,
+  voicesForAge,
+} from "@/lib/avatar/presets";
 import { defaultProfile, parseProfile, personaInstructions } from "@/lib/avatar/profile";
 import { LANGUAGES, languageInstructions, languageOr } from "@/lib/avatar/languages";
 import {
@@ -69,7 +75,7 @@ describe("parseProfile", () => {
     const profile = parseProfile({
       displayName: "Meera",
       ageBand: "older",
-      avatarId: "tara",
+      avatarId: "grace",
       voiceId: "Kajal",
       speechRate: 80,
       captions: "on",
@@ -77,7 +83,7 @@ describe("parseProfile", () => {
     });
     expect(profile.displayName).toBe("Meera");
     expect(profile.ageBand).toBe("older");
-    expect(profile.avatarId).toBe("tara");
+    expect(profile.avatarId).toBe("grace");
     expect(profile.voiceId).toBe("Kajal");
     expect(profile.speechRate).toBe(80);
     expect(profile.simpleLanguage).toBe(true);
@@ -88,6 +94,24 @@ describe("parseProfile", () => {
     // selected and the presence with no palette.
     const profile = parseProfile({ avatarId: "avatar-that-no-longer-exists" });
     expect(getAvatar(profile.avatarId)).toBeDefined();
+  });
+
+  it("follows a rename rather than resetting the companion someone chose", () => {
+    // The roster was renamed when the presenters were replaced. Somebody who
+    // picked the calm, precise one should still have the calm, precise one.
+    for (const [before, after] of Object.entries(RENAMED_AVATARS)) {
+      expect(parseProfile({ avatarId: before }).avatarId, before).toBe(after);
+      expect(getAvatar(after), after).toBeDefined();
+    }
+  });
+
+  it("carries the old presence styles onto the merged one", () => {
+    // "photoreal" and "portrait" were separate looks before uploaded pictures
+    // learned to talk; both meant "show me a face".
+    expect(parseProfile({ presence: "photoreal" }).presence).toBe("presenter");
+    expect(parseProfile({ presence: "portrait" }).presence).toBe("presenter");
+    expect(parseProfile({ presence: "abstract" }).presence).toBe("abstract");
+    expect(parseProfile({ presence: "nonsense" }).presence).toBe(defaultProfile().presence);
   });
 
   it("replaces a retired voice with one that speaks the chosen language", () => {
@@ -129,8 +153,8 @@ describe("parseProfile", () => {
 
 describe("personaInstructions", () => {
   it("names the avatar and carries its manner", () => {
-    const text = personaInstructions(parseProfile({ avatarId: "vikram" }));
-    expect(text).toContain("Vikram");
+    const text = personaInstructions(parseProfile({ avatarId: "daniel" }));
+    expect(text).toContain("Daniel");
     expect(text).toMatch(/precise/i);
   });
 
@@ -248,7 +272,7 @@ describe("migrating a profile written before languages existed", () => {
   it("takes the language from the voice that was chosen", () => {
     // The voice is the only record of what the person actually picked.
     // Resetting to the default would quietly take it away from them.
-    const profile = parseProfile({ voiceId: "Kajal", avatarId: "tara" });
+    const profile = parseProfile({ voiceId: "Kajal", avatarId: "grace" });
     expect(profile.languageCode).toBe("en-IN");
     expect(profile.voiceId).toBe("Kajal");
   });

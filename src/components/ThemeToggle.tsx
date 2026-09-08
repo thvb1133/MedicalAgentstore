@@ -15,31 +15,30 @@ export const THEME_KEY = "sanjivani-setu.theme";
  * client-side toggle gets wrong. It is small and deliberately dependency-free
  * for that reason.
  *
- * It also honours the operating system preference when nothing has been
- * chosen, which is the only correct default: someone who has set their whole
- * machine to light mode has already told us what they want.
+ * Light is the default, and deliberately not the operating system's
+ * preference. This is a product decision rather than a technical one: the
+ * light theme is the face of the thing, it is what the screenshots and the
+ * demo show, and a first-time visitor arriving on a machine set to dark mode
+ * should still see the interface as it was designed. Anyone who prefers dark
+ * is one click away and the choice is remembered from then on.
  */
 export const THEME_INIT_SCRIPT = `
 (function () {
   try {
     var saved = localStorage.getItem(${JSON.stringify(THEME_KEY)});
-    var theme = saved === "morning" || saved === "night"
-      ? saved
-      : (window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches
-          ? "morning"
-          : "night");
+    var theme = saved === "night" ? "night" : "morning";
     document.documentElement.setAttribute("data-theme", theme);
   } catch (e) {
-    document.documentElement.setAttribute("data-theme", "night");
+    document.documentElement.setAttribute("data-theme", "morning");
   }
 })();
 `;
 
 function currentTheme(): Theme {
-  if (typeof document === "undefined") return "night";
-  return document.documentElement.getAttribute("data-theme") === "morning"
-    ? "morning"
-    : "night";
+  if (typeof document === "undefined") return "morning";
+  return document.documentElement.getAttribute("data-theme") === "night"
+    ? "night"
+    : "morning";
 }
 
 export function ThemeToggle() {

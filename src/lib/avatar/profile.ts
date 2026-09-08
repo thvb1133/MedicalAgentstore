@@ -14,14 +14,20 @@
  */
 
 import { DEFAULT_LANGUAGE, getLanguage, languageInstructions } from "./languages";
-import { avatarOr, DEFAULT_AVATAR_ID, getAvatar, type AgeBand } from "./presets";
+import {
+  avatarOr,
+  DEFAULT_AVATAR_ID,
+  getAvatar,
+  RENAMED_AVATARS,
+  type AgeBand,
+} from "./presets";
 import { clampRate, getVoice, RATE_DEFAULT, voiceForLanguage } from "./voices";
 
 /** How prominent the on-screen captions are. */
 export type CaptionMode = "off" | "on" | "large";
 
-/** A photoreal presenter, an illustrated face, or an abstract shape. */
-export type PresenceStyle = "photoreal" | "portrait" | "abstract";
+/** A face that talks, or an abstract shape. */
+export type PresenceStyle = "presenter" | "abstract";
 
 /** Nothing signed, the manual alphabet only, or the full signer. */
 export type SignMode = "off" | "spell" | "sign";
@@ -32,14 +38,14 @@ export interface CompanionProfile {
   ageBand: AgeBand;
   avatarId: string;
   /**
-   * A photoreal presenter, a drawn face, or an abstract shape.
+   * A face that talks, or an abstract shape.
    *
-   * All three are offered rather than one replacing the others, because the
-   * trade runs in both directions. A face that looks like a person is far
-   * easier to sit with for ten minutes and is what people now expect from
-   * anything that talks; it also lends whatever it says the credibility of a
-   * person, and some people would rather health information did not arrive
-   * that way. Nobody is in a position to make that choice on their behalf.
+   * Both are offered rather than one replacing the other, because the trade
+   * runs in both directions. A face is far easier to sit with for ten minutes
+   * and is what people now expect from anything that talks; it also lends
+   * whatever it says the credibility of a person, and some people would
+   * rather health information did not arrive that way. Nobody is in a
+   * position to make that choice on their behalf.
    */
   presence: PresenceStyle;
   /**
@@ -85,7 +91,13 @@ const AGE_BANDS: AgeBand[] = ["child", "teen", "adult", "older"];
 const CAPTION_MODES: CaptionMode[] = ["off", "on", "large"];
 const SIGN_TONES = ["light", "medium", "tan", "deep"];
 const SIGN_MODES: SignMode[] = ["off", "spell", "sign"];
-const PRESENCE_STYLES: PresenceStyle[] = ["photoreal", "portrait", "abstract"];
+const PRESENCE_STYLES: PresenceStyle[] = ["presenter", "abstract"];
+
+/** Earlier names for the presence styles, before the two face modes merged. */
+const RENAMED_PRESENCE: Record<string, PresenceStyle> = {
+  photoreal: "presenter",
+  portrait: "presenter",
+};
 
 /** Constrained to what the history route will accept as a key segment. */
 export function generateProfileId(): string {
@@ -104,7 +116,7 @@ export function defaultProfile(): CompanionProfile {
     displayName: "",
     ageBand: "adult",
     avatarId: avatar.id,
-    presence: "photoreal",
+    presence: "presenter",
     languageCode: DEFAULT_LANGUAGE,
     voiceId: avatar.defaultVoiceId,
     speechRate: RATE_DEFAULT,
@@ -136,10 +148,14 @@ export function parseProfile(raw: unknown): CompanionProfile {
     ? (p.ageBand as AgeBand)
     : base.ageBand;
 
-  // An avatar id from an older build may no longer exist. Falling back to the
-  // default is right; carrying the dead id forward would leave the picker with
-  // nothing selected and the presence with no palette.
-  const avatarId = getAvatar(asString(p.avatarId, "")) ? (p.avatarId as string) : base.avatarId;
+  // An avatar id from an older build may have been renamed, or may simply be
+  // gone. A rename is followed so the person keeps the companion they chose;
+  // anything else falls back to the default, because carrying a dead id
+  // forward would leave the picker with nothing selected and the presence
+  // with no palette.
+  const storedAvatar = asString(p.avatarId, "");
+  const renamed = RENAMED_AVATARS[storedAvatar] ?? storedAvatar;
+  const avatarId = getAvatar(renamed) ? renamed : base.avatarId;
 
   const storedVoice = getVoice(asString(p.voiceId, ""));
 
@@ -177,9 +193,7 @@ export function parseProfile(raw: unknown): CompanionProfile {
     displayName: asString(p.displayName, base.displayName),
     ageBand,
     avatarId,
-    presence: PRESENCE_STYLES.includes(p.presence as PresenceStyle)
-      ? (p.presence as PresenceStyle)
-      : base.presence,
+    presence: readPresence(asString(p.presence, ""), base.presence),
     languageCode,
     voiceId,
     speechRate: clampRate(typeof p.speechRate === "number" ? p.speechRate : base.speechRate),
@@ -235,6 +249,11 @@ export function saveProfile(profile: CompanionProfile): CompanionProfile {
  * still on, not silently reset because the shape of the setting changed
  * underneath them.
  */
+function readPresence(stored: string, fallback: PresenceStyle): PresenceStyle {
+  if (PRESENCE_STYLES.includes(stored as PresenceStyle)) return stored as PresenceStyle;
+  return RENAMED_PRESENCE[stored] ?? fallback;
+}
+
 function readSignMode(p: Record<string, unknown>, fallback: SignMode): SignMode {
   if (SIGN_MODES.includes(p.signMode as SignMode)) return p.signMode as SignMode;
   if (typeof p.fingerspelling === "boolean") return p.fingerspelling ? "spell" : "off";

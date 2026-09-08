@@ -4,7 +4,8 @@ import {
   ACCEPTED_TYPES,
   cropBox,
   MAX_UPLOAD_BYTES,
-  PORTRAIT_SIZE,
+  PORTRAIT_HEIGHT,
+  PORTRAIT_WIDTH,
   validateFile,
 } from "@/lib/avatar/portrait";
 import { AVATARS } from "@/lib/avatar/presets";
@@ -36,15 +37,32 @@ describe("validateFile", () => {
   });
 });
 
+const ASPECT = PORTRAIT_WIDTH / PORTRAIT_HEIGHT;
+
 describe("cropBox", () => {
-  it("takes the largest square that fits", () => {
-    expect(cropBox(1000, 600).size).toBe(600);
-    expect(cropBox(600, 1000).size).toBe(600);
+  it("takes the largest four-by-three window that fits", () => {
+    // Landscape wider than 4:3: full height, trimmed at the sides.
+    expect(cropBox(1000, 600)).toMatchObject({ w: 800, h: 600 });
+    // Anything taller than 4:3: full width, trimmed top and bottom.
+    expect(cropBox(600, 1000)).toMatchObject({ w: 600, h: 450 });
+  });
+
+  it("always produces the aspect the tile expects", () => {
+    for (const [w, h] of [
+      [4032, 3024],
+      [3024, 4032],
+      [100, 4000],
+      [4000, 100],
+      [800, 800],
+    ]) {
+      const box = cropBox(w, h);
+      expect(box.w / box.h, `${w}x${h}`).toBeCloseTo(ASPECT, 6);
+    }
   });
 
   it("centres the crop on a landscape image", () => {
     const box = cropBox(1000, 600);
-    expect(box.x).toBe(200);
+    expect(box.x).toBe(100);
     expect(box.y).toBe(0);
   });
 
@@ -52,12 +70,8 @@ describe("cropBox", () => {
     // A phone portrait is 3:4 with the face in the upper half. A centred
     // crop of one takes the chin off.
     const box = cropBox(600, 1000);
-    expect(box.y).toBeLessThan((1000 - 600) / 2);
+    expect(box.y).toBeLessThan((1000 - 450) / 2);
     expect(box.y).toBeGreaterThanOrEqual(0);
-  });
-
-  it("leaves a square image alone", () => {
-    expect(cropBox(800, 800)).toEqual({ x: 0, y: 0, size: 800 });
   });
 
   it("never crops outside the source", () => {
@@ -66,12 +80,13 @@ describe("cropBox", () => {
       [3024, 4032],
       [100, 4000],
       [4000, 100],
+      [800, 800],
     ]) {
       const box = cropBox(w, h);
       expect(box.x).toBeGreaterThanOrEqual(0);
       expect(box.y).toBeGreaterThanOrEqual(0);
-      expect(box.x + box.size).toBeLessThanOrEqual(w);
-      expect(box.y + box.size).toBeLessThanOrEqual(h);
+      expect(box.x + box.w).toBeLessThanOrEqual(w + 1e-9);
+      expect(box.y + box.h).toBeLessThanOrEqual(h + 1e-9);
     }
   });
 });
@@ -79,7 +94,7 @@ describe("cropBox", () => {
 describe("portraits", () => {
   it("gives every avatar one", () => {
     for (const avatar of AVATARS) {
-      expect(avatar.portrait, avatar.id).toMatch(/^\/portraits\/[a-z]+\.webp$/);
+      expect(avatar.portrait, avatar.id).toMatch(/^\/portraits\/[a-z.]+\.webp$/);
     }
   });
 
@@ -88,10 +103,11 @@ describe("portraits", () => {
     expect(new Set(portraits).size).toBe(portraits.length);
   });
 
-  it("stores at a size that suits a retina portrait frame", () => {
-    // The frame is around 300 CSS pixels; anything smaller is visibly soft on
-    // a 2x display, and much larger will not fit in localStorage.
-    expect(PORTRAIT_SIZE).toBeGreaterThanOrEqual(300 * 1.25);
-    expect(PORTRAIT_SIZE).toBeLessThanOrEqual(512);
+  it("stores at a size that suits a retina presenter tile", () => {
+    // The tile is around 320 CSS pixels wide; anything smaller is visibly
+    // soft on a 2x display, and much larger will not fit in localStorage.
+    expect(PORTRAIT_WIDTH).toBeGreaterThanOrEqual(320 * 1.5);
+    expect(PORTRAIT_WIDTH).toBeLessThanOrEqual(1024);
+    expect(ASPECT).toBeCloseTo(4 / 3, 6);
   });
 });

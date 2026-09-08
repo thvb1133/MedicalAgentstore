@@ -3,6 +3,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { pollyVoiceId } from "@/lib/avatar/voices";
+import {
+  measureLevel,
+  routeForAnalysis,
+  type SpeechAnalysis,
+} from "@/lib/avatar/speechAudio";
 import type { ConversationTurn, LiveContext } from "@/lib/conversation";
 
 /**
@@ -480,64 +485,4 @@ export function useConversation(options: ConversationOptions): ConversationState
 interface SpokenReply {
   text: string;
   audio: HTMLAudioElement;
-}
-
-interface SpeechAnalysis {
-  context: AudioContext;
-  analyser: AnalyserNode;
-  samples: Uint8Array<ArrayBuffer>;
-}
-
-/**
- * Route the reply through an analyser so its loudness can be read.
- *
- * Routing an element into Web Audio replaces its own output with the graph's,
- * so if the context will not start the person hears nothing at all. That is a
- * far worse failure than an unanimated mouth, so the connection is only made
- * once the context is confirmed running, and every step is allowed to fail
- * quietly back to plain playback.
- */
-async function routeForAnalysis(
-  ref: { current: SpeechAnalysis | null },
-  audio: HTMLAudioElement,
-): Promise<void> {
-  try {
-    if (!ref.current) {
-      const Ctor =
-        window.AudioContext ??
-        (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-      if (!Ctor) return;
-      const context = new Ctor();
-      const analyser = context.createAnalyser();
-      analyser.fftSize = 1024;
-      // Enough smoothing that a plosive does not make the jaw snap, little
-      // enough that the mouth still shuts between words.
-      analyser.smoothingTimeConstant = 0.35;
-      analyser.connect(context.destination);
-      ref.current = { context, analyser, samples: new Uint8Array(analyser.fftSize) };
-    }
-
-    const analysis = ref.current;
-    if (analysis.context.state !== "running") await analysis.context.resume();
-    if (analysis.context.state !== "running") return;
-
-    analysis.context.createMediaElementSource(audio).connect(analysis.analyser);
-  } catch {
-    // No analysis. The presenter falls back to the text track alone.
-  }
-}
-
-function measureLevel(analysis: SpeechAnalysis | null): number | null {
-  if (!analysis) return null;
-  analysis.analyser.getByteTimeDomainData(analysis.samples);
-
-  let sum = 0;
-  for (let i = 0; i < analysis.samples.length; i++) {
-    const deviation = (analysis.samples[i] - 128) / 128;
-    sum += deviation * deviation;
-  }
-  const rms = Math.sqrt(sum / analysis.samples.length);
-  // Conversational speech sits around 0.2 RMS, so this puts an ordinary
-  // sentence near the top of the range without clipping every vowel.
-  return Math.min(1, rms * 4.5);
 }

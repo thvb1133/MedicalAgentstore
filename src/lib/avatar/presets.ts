@@ -1,22 +1,22 @@
 /**
  * The avatar catalogue.
  *
- * These are deliberately abstract. A photoreal synthetic face on a tool that
- * measures your body and then talks to you about it borrows a clinician's
- * authority without any of a clinician's accountability, and the more
- * convincing the face, the more of that authority it borrows. Every avatar
- * here is unmistakably a piece of software.
- *
- * That constraint turned out to be freeing rather than limiting. Because
- * nothing has to look human, the presence can carry information instead:
- * every one of these pulses in time with the heart rate the camera is
- * measuring, and shows the microphone level as it listens.
- *
  * Each avatar pairs a look with a manner of speaking. The `persona` line goes
- * into Claude's system prompt, so choosing "Tara" does not merely recolour the
- * screen — it changes how the assistant talks. What it will not change is what
- * the assistant is allowed to say: the safety rules sit above the persona and
- * a persona cannot loosen them.
+ * into Claude's system prompt, so choosing "Grace" does not merely recolour
+ * the screen — it changes how the assistant talks. What it will not change is
+ * what the assistant is allowed to say: the safety rules sit above the persona
+ * and a persona cannot loosen them.
+ *
+ * The five presenters are generated faces of people who do not exist, and
+ * they are deliberately spread across the world rather than clustered
+ * anywhere. Somebody who has never once been offered a default that looks
+ * like them notices, and a health tool is a bad place to keep that record
+ * going. Nobody has to use any of them: an uploaded photograph works just as
+ * well, and an abstract shape is there for people who would rather not be
+ * talked to by a face at all.
+ *
+ * Each also keeps a palette and an abstract silhouette, because the shape
+ * mode has to remain a real choice rather than a downgrade.
  */
 
 import { VoiceOption, VOICES } from "./voices";
@@ -62,18 +62,17 @@ export interface AvatarPreset {
   /** Age bands this is offered for first. It is never restricted to them. */
   suitedTo: AgeBand[];
   /**
-   * An illustrated portrait, for people who would rather talk to a face than
-   * a shape. Drawn rather than photographed, and it does not lip-sync — see
-   * `PortraitPresence` for why that line is where it is.
+   * A still portrait, used only where there is no presenter to animate.
+   * In practice that means Pip.
    */
   portrait: string;
 }
 
 export const AVATARS: AvatarPreset[] = [
   {
-    id: "asha",
-    portrait: "/portraits/asha.webp",
-    name: "Asha",
+    id: "maya",
+    portrait: "/portraits/maya.photo.square.webp",
+    name: "Maya",
     tagline: "Warm and steady. A good default for most people.",
     style: "orb",
     palette: { core: "#f0a04b", ring: "#ffb968", glow: "#f0a04b26" },
@@ -83,9 +82,9 @@ export const AVATARS: AvatarPreset[] = [
     suitedTo: ["teen", "adult", "older"],
   },
   {
-    id: "vikram",
-    portrait: "/portraits/vikram.webp",
-    name: "Vikram",
+    id: "daniel",
+    portrait: "/portraits/daniel.photo.square.webp",
+    name: "Daniel",
     tagline: "Calm and precise. Explains the numbers properly.",
     style: "lattice",
     palette: { core: "#60a5fa", ring: "#93c5fd", glow: "#60a5fa26" },
@@ -95,9 +94,9 @@ export const AVATARS: AvatarPreset[] = [
     suitedTo: ["adult", "older"],
   },
   {
-    id: "tara",
-    portrait: "/portraits/tara.webp",
-    name: "Tara",
+    id: "grace",
+    portrait: "/portraits/grace.photo.square.webp",
+    name: "Grace",
     tagline: "Gentle and unhurried. Made for older users.",
     style: "aurora",
     palette: { core: "#4ade80", ring: "#86efac", glow: "#4ade8026" },
@@ -119,32 +118,43 @@ export const AVATARS: AvatarPreset[] = [
     suitedTo: ["child"],
   },
   {
-    id: "kiran",
-    portrait: "/portraits/kiran.webp",
-    name: "Kiran",
-    tagline: "Everyday Indian English. Comfortable with Indian names.",
+    id: "sofia",
+    portrait: "/portraits/sofia.photo.square.webp",
+    name: "Sofia",
+    tagline: "Friendly and direct. Comfortable switching languages.",
     style: "wave",
     palette: { core: "#c084fc", ring: "#d8b4fe", glow: "#c084fc26" },
     persona:
-      "Speak in natural, everyday Indian English. Pronounce Indian names and places as a matter of course. Keep the register friendly and direct rather than formal.",
-    defaultVoiceId: "Kajal",
+      "Be friendly and direct, with a light touch. Keep the register conversational rather than formal. If the person mixes languages mid-sentence, follow them rather than correcting them.",
+    defaultVoiceId: "Emma",
     suitedTo: ["teen", "adult", "older"],
   },
   {
     id: "nova",
-    portrait: "/portraits/nova.webp",
+    portrait: "/portraits/nova.photo.square.webp",
     name: "Nova",
     tagline: "Brisk and to the point. Minimal small talk.",
     style: "prism",
     palette: { core: "#22d3ee", ring: "#67e8f9", glow: "#22d3ee26" },
     persona:
       "Be brisk and efficient. Skip pleasantries, answer what was asked, and stop. One short paragraph at most. Never pad a turn to seem friendlier.",
-    defaultVoiceId: "Stephen",
+    defaultVoiceId: "Joanna",
     suitedTo: ["teen", "adult"],
   },
 ];
 
-export const DEFAULT_AVATAR_ID = "asha";
+export const DEFAULT_AVATAR_ID = "maya";
+
+/**
+ * Companions that have been renamed, so a stored profile still lands on the
+ * same person rather than being silently reset to the default.
+ */
+export const RENAMED_AVATARS: Record<string, string> = {
+  asha: "maya",
+  vikram: "daniel",
+  tara: "grace",
+  kiran: "sofia",
+};
 
 export function getAvatar(id: string): AvatarPreset | undefined {
   return AVATARS.find((a) => a.id === id);

@@ -9,4 +9,4 @@
  * photoreal synthetic child talking to a child about their body is not a
  * thing this should ship, however well it would render.
  */
-export const PHOTO_RIG_IDS = ["asha", "vikram", "tara", "kiran", "nova"];
+export const PHOTO_RIG_IDS = ["maya", "daniel", "grace", "sofia", "nova"];

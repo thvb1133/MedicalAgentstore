@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { AvatarPreset } from "@/lib/avatar/presets";
-import { getRig } from "@/lib/avatar/faceRig";
+import { getRig, type FaceRig } from "@/lib/avatar/faceRig";
 import { presenterFrame, type PresenterStatus } from "@/lib/avatar/presenter";
 import { supportsVisemes, visemeTrack, type VisemeTrack } from "@/lib/avatar/visemes";
 import type { SpeechFrame } from "@/hooks/useConversation";
@@ -51,6 +51,12 @@ export interface TalkingPresenterProps {
    * for a fault.
    */
   preview?: string | null;
+  /** Picker size, where the full disclosure would cover the face it labels. */
+  compact?: boolean;
+  /** An uploaded photograph, used in place of the preset presenter. */
+  customImage?: string | null;
+  /** The mesh found in that photograph. Without it there is nothing to warp. */
+  customRig?: FaceRig | null;
   className?: string;
 }
 
@@ -72,14 +78,25 @@ export function TalkingPresenter({
   languageCode = "en-GB",
   heartRateBpm,
   preview = null,
+  compact = false,
+  customImage = null,
+  customRig = null,
   className,
 }: TalkingPresenterProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [ready, setReady] = useState(false);
 
-  const rig = useMemo(() => getRig(avatar.id), [avatar.id]);
+  // An uploaded photograph wins over the preset, but only when its face was
+  // actually found. A picture with a rig from some other picture would warp
+  // the wrong places, so the two always travel together.
+  const uploaded = customImage && customRig ? { rig: customRig, source: customImage } : null;
+  const rig = useMemo(
+    () => uploaded?.rig ?? getRig(avatar.id),
+    [uploaded?.rig, avatar.id],
+  );
   const scene = useMemo(() => (rig ? buildScene(rig) : null), [rig]);
-  const source = photoFor(avatar.id);
+  const source = uploaded?.source ?? photoFor(avatar.id);
+  const isUpload = uploaded !== null;
 
   const imageRef = useRef<HTMLImageElement | null>(null);
   useEffect(() => {
@@ -211,7 +228,11 @@ export function TalkingPresenter({
         ref={canvasRef}
         className="block h-full w-full"
         role="img"
-        aria-label={`${avatar.name}, a synthetic presenter, ${STATUS_LABEL[status].toLowerCase()}`}
+        aria-label={
+          isUpload
+            ? `An AI presenter animated from your own picture, ${STATUS_LABEL[status].toLowerCase()}`
+            : `${avatar.name}, a synthetic presenter, ${STATUS_LABEL[status].toLowerCase()}`
+        }
       />
 
       {/*
@@ -220,25 +241,37 @@ export function TalkingPresenter({
         situation where somebody needs to be able to see, at a glance and at
         any moment, that there is no clinician on the other end of it.
       */}
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end justify-between gap-2 p-2.5">
+      <div
+        className={`pointer-events-none absolute inset-x-0 bottom-0 flex items-end justify-between gap-1.5 ${
+          compact ? "p-1.5" : "p-2.5"
+        }`}
+      >
         <span
-          className="rounded-md px-2 py-1 text-[11px] font-medium tracking-tight text-white backdrop-blur-sm"
+          className={`rounded-md font-medium tracking-tight text-white backdrop-blur-sm ${
+            compact ? "px-1.5 py-0.5 text-[9.5px]" : "px-2 py-1 text-[11px]"
+          }`}
           style={{ background: "#0f172acc" }}
         >
-          {avatar.name} · AI avatar, not a real person
+          {compact
+            ? "AI avatar"
+            : isUpload
+              ? "AI avatar · animated from your picture"
+              : `${avatar.name} · AI avatar, not a real person`}
         </span>
-        <span
-          className="rounded-md px-2 py-1 text-[10.5px] font-medium uppercase tracking-[0.12em] backdrop-blur-sm"
-          style={{
-            background: "#0f172acc",
-            color: status === "error" ? "#fca5a5" : avatar.palette.ring,
-          }}
-        >
-          {preview && !speaking ? "Preview" : STATUS_LABEL[status]}
-        </span>
+        {!compact && (
+          <span
+            className="rounded-md px-2 py-1 text-[10.5px] font-medium uppercase tracking-[0.12em] backdrop-blur-sm"
+            style={{
+              background: "#0f172acc",
+              color: status === "error" ? "#fca5a5" : avatar.palette.ring,
+            }}
+          >
+            {preview && !speaking ? "Preview" : STATUS_LABEL[status]}
+          </span>
+        )}
       </div>
 
-      {heartRateBpm && heartRateBpm > 30 && heartRateBpm < 220 ? (
+      {!compact && heartRateBpm && heartRateBpm > 30 && heartRateBpm < 220 ? (
         <span
           className="pointer-events-none absolute right-2.5 top-2.5 rounded-md px-2 py-1 text-[11px] font-medium text-white backdrop-blur-sm"
           style={{ background: "#0f172acc" }}
@@ -250,9 +283,22 @@ export function TalkingPresenter({
   );
 }
 
-/** Whether an avatar has a photoreal presenter at all. */
+/** Whether an avatar has a built-in presenter at all. */
 export function hasPresenter(avatarId: string): boolean {
   return getRig(avatarId) !== null;
+}
+
+/**
+ * Whether there is anything to animate: an uploaded photograph whose face was
+ * found, or a preset that ships with a rig. Pip has neither, by design.
+ */
+export function canPresent(
+  avatarId: string,
+  customImage: string | null,
+  customRig: FaceRig | null,
+): boolean {
+  if (customImage && customRig) return true;
+  return hasPresenter(avatarId);
 }
 
 export function photoFor(avatarId: string): string | null {

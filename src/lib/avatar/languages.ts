@@ -52,6 +52,27 @@ export const LANGUAGES: Language[] = [
 
 export const DEFAULT_LANGUAGE = "en-GB";
 
+/**
+ * Follow whoever is talking, rather than a language chosen in advance.
+ *
+ * The measurement agents pin a language on purpose: someone who has set Hindi
+ * and then says one English word should not have the conversation switch
+ * under them mid-reading. The assistant that floats over every page has the
+ * opposite problem — it is answering one-off questions from whoever happens
+ * to be at the keyboard, in whatever they happen to type — so there mirroring
+ * the input is the right behaviour, and it is the only way to cover languages
+ * the picker does not list.
+ */
+export const MIRROR_LANGUAGE = "auto";
+
+export function mirrorLanguageInstructions(): string {
+  return [
+    "Reply in the same language the person just used, whatever it is, and write it in that language's own script rather than in transliteration.",
+    "If they switch language mid-conversation, switch with them. If a message is too short to tell, use the language of the message before it.",
+    'Leave measurements as digits with their standard unit — "72 bpm", "118/76 mmHg" — in every language, because those are what a clinician will ask them to repeat.',
+  ].join(" ");
+}
+
 export function getLanguage(code: string): Language | undefined {
   return LANGUAGES.find((l) => l.code === code);
 }

@@ -14,6 +14,7 @@ import {
   type AvatarPreset,
 } from "@/lib/avatar/presets";
 import { ACCEPTED_TYPES } from "@/lib/avatar/portrait";
+import { RIG_MESSAGE } from "@/lib/avatar/detectRig";
 import { SKIN_TONES } from "@/components/sign/render";
 import type { usePortrait } from "@/hooks/usePortrait";
 import { LANGUAGES, languageOr } from "@/lib/avatar/languages";
@@ -194,13 +195,12 @@ export function CompanionSettings({
 
           <Section
             title="Look"
-            detail="A presenter who talks, a drawn face, or a shape that moves with your pulse and your voice."
+            detail="A face that talks — one of these, or your own picture — or a shape that moves with your pulse and your voice."
           >
             <div className="mb-3 flex flex-wrap gap-2">
               {(
                 [
-                  ["photoreal", "A presenter"],
-                  ["portrait", "A drawing"],
+                  ["presenter", "A face"],
                   ["abstract", "A shape"],
                 ] as Array<[PresenceStyle, string]>
               ).map(([style, label]) => (
@@ -231,14 +231,14 @@ export function CompanionSettings({
                     }}
                   >
                     <div className="pointer-events-none overflow-hidden rounded-lg">
-                      {profile.presence === "photoreal" && hasPresenter(option.id) ? (
+                      {profile.presence === "presenter" && hasPresenter(option.id) ? (
                         <TalkingPresenter
                           avatar={option}
                           status="idle"
+                          compact
                           preview={selected ? PREVIEW_LINE : null}
                         />
-                      ) : profile.presence === "portrait" ||
-                        (profile.presence === "photoreal" && !hasPresenter(option.id)) ? (
+                      ) : profile.presence === "presenter" ? (
                         <PortraitPresence
                           avatar={option}
                           status="listening"
@@ -246,7 +246,6 @@ export function CompanionSettings({
                           heartRateBpm={72}
                           height={92}
                           compact
-                          customImage={selected ? portrait.portrait : null}
                         />
                       ) : (
                         <AvatarPresence
@@ -275,10 +274,11 @@ export function CompanionSettings({
               })}
             </div>
 
-            {profile.presence === "photoreal" && <PresenterNote avatarId={profile.avatarId} />}
-
-            {profile.presence === "portrait" && (
-              <PortraitUpload avatar={avatar} portrait={portrait} />
+            {profile.presence === "presenter" && (
+              <>
+                <PortraitUpload avatar={avatar} portrait={portrait} />
+                <PresenterNote avatarId={profile.avatarId} />
+              </>
             )}
           </Section>
 
@@ -637,36 +637,24 @@ function Toggle({
 }
 
 /**
- * Uploading your own picture.
+ * Where the presenters come from.
  *
- * The note is the point of this control as much as the button is. People
- * upload a photograph of their own doctor, or of a relative, expecting the
- * face to talk — and there is a real line between animating an illustration
- * and animating a photograph of a person who never agreed to say any of this.
- * Saying so here is more use than discovering it later and assuming the
- * feature is broken.
- */
-/**
- * Why the presenters look real, and where that stops.
- *
- * Said here rather than buried in a policy page because this is the moment
- * somebody is choosing to look at a human face for the next ten minutes, and
- * it is the only moment at which the distinction between a generated face and
- * a photograph of a person is something they can act on.
+ * Said at the picker rather than in a policy page because this is the moment
+ * somebody is choosing whose face they will be looking at for the next ten
+ * minutes, and the only moment at which the difference between a generated
+ * face and a photograph of a real person is something they can act on.
  */
 function PresenterNote({ avatarId }: { avatarId: string }) {
   return (
     <div className="mt-3 rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] p-3.5">
       <p className="text-[11.5px] leading-relaxed text-[var(--muted)]">
-        These presenters are generated images. Nobody sat for them, and none of them is a real
-        person, which is why they are allowed to move their mouths while they talk. A photograph
-        you upload is treated differently: it stays still, because a face that belongs to somebody
-        should not be made to appear to say things they never said. Uploading is under{" "}
-        <span className="text-[var(--foreground)]">A drawing</span>.
+        The six built-in presenters are generated images. Nobody sat for them and none of them is
+        a real person. They are spread deliberately across the world rather than clustered
+        anywhere, and if none of them suits you, your own picture works just as well.
       </p>
       {!hasPresenter(avatarId) && (
         <p className="mt-2 text-[11.5px] leading-relaxed text-[var(--muted)]">
-          Pip has no presenter and is shown as a drawing instead. Pip is the companion offered to
+          Pip is drawn rather than photographed and does not talk. Pip is the companion offered to
           children, and a photoreal synthetic child is not something this should put on screen.
         </p>
       )}
@@ -674,6 +662,22 @@ function PresenterNote({ avatarId }: { avatarId: string }) {
   );
 }
 
+/**
+ * Uploading your own picture, and turning it into a presenter.
+ *
+ * Two things are worth being plain about at the point of upload rather than
+ * afterwards.
+ *
+ * The picture never leaves the device. It is cropped, re-encoded — which
+ * drops the GPS coordinates a phone writes into every photograph — and kept
+ * in this browser's storage. Finding the face in it runs here too.
+ *
+ * And the face will talk. That is what was asked for and it is what people
+ * expect, but it means a photograph of somebody else can be made to appear to
+ * say things that person never said. The warning is not a dark pattern to
+ * discourage the feature; it is the one piece of information somebody needs
+ * before they point it at a picture of their doctor.
+ */
 function PortraitUpload({
   avatar,
   portrait,
@@ -683,8 +687,40 @@ function PortraitUpload({
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
 
+  const label =
+    portrait.stage === "reading"
+      ? "Reading…"
+      : portrait.stage === "finding-face"
+        ? "Finding the face…"
+        : portrait.portrait
+          ? "Use a different picture"
+          : "Use my own picture";
+
   return (
     <div className="mt-3 rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] p-3.5">
+      {portrait.portrait && (
+        <div className="mb-3 max-w-[260px]">
+          {portrait.rig ? (
+            <TalkingPresenter
+              avatar={avatar}
+              status="idle"
+              preview={PREVIEW_LINE}
+              customImage={portrait.portrait}
+              customRig={portrait.rig}
+            />
+          ) : (
+            <PortraitPresence
+              avatar={avatar}
+              status="idle"
+              level={0}
+              height={160}
+              compact
+              customImage={portrait.portrait}
+            />
+          )}
+        </div>
+      )}
+
       <div className="flex flex-wrap items-center gap-3">
         <button
           onClick={() => inputRef.current?.click()}
@@ -692,7 +728,7 @@ function PortraitUpload({
           className="rounded-lg border px-3 py-1.5 text-[12px] font-medium transition-colors disabled:opacity-40"
           style={{ borderColor: `${avatar.palette.core}66`, color: avatar.palette.core }}
         >
-          {portrait.busy ? "Working…" : portrait.portrait ? "Use a different picture" : "Use my own picture"}
+          {label}
         </button>
         {portrait.portrait && (
           <button
@@ -721,17 +757,21 @@ function PortraitUpload({
         </p>
       )}
 
+      {portrait.rigFailure && (
+        <p className="mt-2 text-[11.5px] leading-relaxed" style={{ color: "var(--warn)" }}>
+          {RIG_MESSAGE[portrait.rigFailure]}
+        </p>
+      )}
+
       <p className="mt-2.5 text-[11.5px] leading-relaxed text-[var(--muted)]">
-        The picture is cropped and stored in this browser. It is never
-        uploaded, and the re-encoding strips the location your phone recorded
-        with it.
+        The picture is cropped and stored in this browser. It is never uploaded, the face is found
+        on this device, and the re-encoding strips the location your phone recorded with it.
       </p>
       <p className="mt-1.5 text-[11.5px] leading-relaxed text-[var(--faint)]">
-        The face stays still and does not move its mouth. Driving a mouth from
-        the audio is the technique behind deepfakes, and on something that
-        says &ldquo;your blood pressure looks raised&rdquo; it would put words in
-        the mouth of a person who never said them. The pulse ring and the rim
-        carry the movement instead.
+        Whoever is in the picture will appear to speak. Use a picture of yourself, or one you have
+        the person&rsquo;s agreement to use — a face made to say &ldquo;your blood pressure looks
+        raised&rdquo; is saying it in someone&rsquo;s name. The badge on the tile says it is an AI
+        avatar and cannot be turned off.
       </p>
     </div>
   );
