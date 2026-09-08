@@ -1,0 +1,71 @@
+name: Deploy to GitHub Pages
+
+# The public demonstration. It has no secrets and needs none: everything this
+# application measures is computed in the browser, so a static host serves the
+# whole of it. Claude, Polly and the S3 mirror are the only parts that require
+# a key, and the build says on the page that they are switched off here.
+
+on:
+  push:
+    # The branch under review publishes too, so the demonstration can be
+    # looked at before it is merged rather than after.
+    branches: [main, "cursor/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deployment at a time, and never cancel one halfway: an interrupted
+# publish leaves the site half-replaced.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # Enables Pages on first run rather than requiring somebody to find the
+      # setting, and tells us the URL the site will be served from.
+      - id: pages
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
+      # The MediaPipe runtime and the three task models, about 50 MB. They are
+      # not committed, and the CDN fallback would work — but a demonstration
+      # that stops because someone else's CDN is slow is not worth the saving.
+      - run: npm run fetch-models
+
+      - run: npm test
+      - run: npm run lint
+      - run: npx tsc --noEmit
+
+      - run: npm run build:static
+        env:
+          BASE_PATH: ${{ steps.pages.outputs.base_path }}
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: out
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
