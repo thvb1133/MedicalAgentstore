@@ -35,6 +35,7 @@ import {
   type SwitchState,
 } from "@/lib/access/switch";
 import type { AgentDefinition } from "@/lib/agents/registry";
+import { browserSpeechAvailable } from "@/lib/avatar/browserSpeech";
 import { avatarOr } from "@/lib/avatar/presets";
 import { FACE_POINTS, eyeAspectRatio, horizontalGaze } from "@/lib/vision/faceRegions";
 import { personaInstructions } from "@/lib/avatar/profile";
@@ -61,6 +62,18 @@ export function CompanionAgent({ agent }: { agent: AgentDefinition }) {
 
   const { services, loaded: servicesLoaded } = useServices();
   const { profile, update: updateProfile, ready: profileReady } = useCompanionProfile();
+
+  /**
+   * Read after mounting rather than during the render, because the server has
+   * no `speechSynthesis` and a control that appears on one pass and not the
+   * other is a hydration error.
+   */
+  const [browserVoice, setBrowserVoice] = useState(false);
+  useEffect(() => setBrowserVoice(browserSpeechAvailable()), []);
+
+  const claudeMissing = servicesLoaded && !services.claude;
+  const canSpeak = services.polly || browserVoice;
+
   const avatar = avatarOr(profile.avatarId);
   const accent = avatar.palette.core;
 
@@ -184,7 +197,9 @@ export function CompanionAgent({ agent }: { agent: AgentDefinition }) {
 
   const conversation = useConversation({
     getContext,
-    speechEnabled: services.polly && profile.speakReplies,
+    speechEnabled: canSpeak && profile.speakReplies,
+    cloudSpeech: services.polly,
+    source: claudeMissing ? "guide" : "model",
     voiceId: profile.voiceId,
     speechRate: profile.speechRate,
     persona: personaInstructions(profile),
@@ -318,24 +333,36 @@ export function CompanionAgent({ agent }: { agent: AgentDefinition }) {
 
   const portrait = usePortrait();
 
-  const claudeMissing = servicesLoaded && !services.claude;
   const pollyMissing = servicesLoaded && !services.polly;
 
   return (
     <div className="space-y-4">
+      {/*
+        Said before the first question rather than after it, and worded around
+        what does work. There is no language model behind this copy, and the
+        honest version of that is not an apology for a broken feature — it is
+        a description of a smaller one: a written guide that answers the
+        common questions, read aloud by the browser's own voice.
+      */}
       {claudeMissing && (
         <div
           className="panel p-4 text-[12.5px] leading-relaxed"
           style={{ borderColor: "var(--fair)" }}
         >
-            <span className="font-medium text-[var(--foreground)]">
-            Talking back needs Claude.{" "}
+          <span className="font-medium text-[var(--foreground)]">
+            {avatar.name} is running as a scripted guide.{" "}
           </span>
           <span className="text-[var(--muted)]">
-            Set <span className="tabular">ANTHROPIC_API_KEY</span> and restart to
-            enable the conversation. You can still start a session now — the camera
-            vitals and voice acoustics run entirely in your browser and need no
-            keys at all.
+            There is no language model behind this copy, so the replies come from
+            a written list — what the measurements are, why one is missing, what
+            this will not claim — rather than from Claude.{" "}
+            {browserVoice
+              ? "They are spoken aloud by your browser's own voice, and you can talk or type to ask."
+              : "This browser has no speech synthesiser, so they are shown as text."}{" "}
+            Every measurement on the page is real and unaffected: all of it runs
+            here and never needed a key. Set{" "}
+            <span className="tabular">ANTHROPIC_API_KEY</span> and restart for the
+            full conversation.
           </span>
         </div>
       )}
@@ -345,7 +372,8 @@ export function CompanionAgent({ agent }: { agent: AgentDefinition }) {
           profile={profile}
           onChange={updateProfile}
           onClose={() => setSettingsOpen(false)}
-          speechAvailable={services.polly}
+          speechAvailable={canSpeak}
+          cloudSpeech={services.polly}
           portrait={portrait}
         />
       )}
@@ -447,8 +475,9 @@ export function CompanionAgent({ agent }: { agent: AgentDefinition }) {
           )}
           {pollyMissing && running && (
             <p className="text-[11px] leading-relaxed text-[var(--faint)]">
-              Replies are shown as text. Add AWS credentials to hear them spoken by
-              Polly.
+              {browserVoice
+                ? "Spoken by your browser's own voice. Add AWS credentials for Polly, which sounds considerably better."
+                : "Replies are shown as text. This browser has no speech synthesiser, and there are no AWS credentials for Polly either."}
             </p>
           )}
         </div>
@@ -561,7 +590,7 @@ export function CompanionAgent({ agent }: { agent: AgentDefinition }) {
               <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
                 <p className="max-w-sm text-[13px] leading-relaxed text-[var(--muted)]">
                   {claudeMissing
-                    ? "Running in measurement-only mode. The panels around this one are live; add a Claude key to have a conversation as well."
+                    ? "Ask about heart rate, variability, breathing, blood pressure, voice, signal quality, lighting or privacy, and the written guide will answer. Add a Claude key for a real conversation."
                     : running
                       ? "Say hello whenever you are ready. Pause when you finish speaking and the reply will come."
                       : "Start the conversation and the assistant will listen while the camera measures your pulse and breathing."}
@@ -649,14 +678,13 @@ export function CompanionAgent({ agent }: { agent: AgentDefinition }) {
                     ? "This browser cannot listen — type here"
                     : "Or type instead of speaking"
               }
-              disabled={claudeMissing}
               className={`flex-1 rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] px-3 py-2 text-[var(--foreground)] outline-none placeholder:text-[var(--faint)] focus:border-[var(--border-strong)] disabled:opacity-40 ${
                 profile.accessMode ? "text-[16px]" : "text-[13px]"
               }`}
             />
             <button
               type="submit"
-              disabled={claudeMissing || !typed.trim()}
+              disabled={!typed.trim()}
               className="rounded-lg border border-[var(--border)] px-3 py-2 text-[12px] text-[var(--muted)] transition-colors hover:text-[var(--foreground)] disabled:opacity-30"
             >
               Send

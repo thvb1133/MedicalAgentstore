@@ -3,13 +3,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { mirrorLanguageInstructions } from "@/lib/avatar/languages";
-import {
-  measureLevel,
-  routeForAnalysis,
-  type SpeechAnalysis,
-} from "@/lib/avatar/speechAudio";
-import { pollyVoiceId } from "@/lib/avatar/voices";
+import { speakReply, type SpokenReply } from "@/lib/avatar/say";
+import type { SpeechAnalysis } from "@/lib/avatar/speechAudio";
 import type { ConversationTurn } from "@/lib/conversation";
+import { guideReply } from "@/lib/guide";
 import type { SpeechFrame } from "./useConversation";
 import { api, NO_SERVER } from "@/lib/paths";
 
@@ -40,8 +37,12 @@ export interface AssistantOptions {
   persona?: string;
   /** BCP-47 tag the recogniser listens for. The reply follows the input. */
   listenLanguage: string;
-  /** Whether Polly is configured; when false replies are shown, not spoken. */
+  /** Whether replies should be spoken at all. */
   speechEnabled: boolean;
+  /** Whether Polly is configured; when false the browser's own voice speaks. */
+  cloudSpeech?: boolean;
+  /** Where the answers come from when there is no model to ask. */
+  source?: "model" | "guide";
   voiceId?: string;
   speechRate?: number;
 }
@@ -95,7 +96,15 @@ function getConstructor(): RecognitionCtor | null {
 const MAX_HISTORY = 16;
 
 export function useAssistant(options: AssistantOptions): AssistantState {
-  const { persona, listenLanguage, speechEnabled, voiceId, speechRate = 100 } = options;
+  const {
+    persona,
+    listenLanguage,
+    speechEnabled,
+    cloudSpeech = false,
+    source = "model",
+    voiceId,
+    speechRate = 100,
+  } = options;
 
   const [messages, setMessages] = useState<ConversationTurn[]>([]);
   const [status, setStatus] = useState<AssistantStatus>("idle");
@@ -108,10 +117,12 @@ export function useAssistant(options: AssistantOptions): AssistantState {
   const messagesRef = useRef<ConversationTurn[]>([]);
   messagesRef.current = messages;
 
+  const sourceRef = useRef(source);
+  sourceRef.current = source;
+
   const recognitionRef = useRef<RecognitionLike | null>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
   const abortRef = useRef<AbortController | null>(null);
-  const speechRef = useRef<{ text: string; audio: HTMLAudioElement } | null>(null);
+  const speechRef = useRef<SpokenReply | null>(null);
   const analysisRef = useRef<SpeechAnalysis | null>(null);
 
   useEffect(() => {
@@ -121,37 +132,28 @@ export function useAssistant(options: AssistantOptions): AssistantState {
   const speak = useCallback(
     async (text: string) => {
       if (!speechEnabled || !text.trim()) return;
-      const speakUrl = api("/api/speak");
-      if (!speakUrl) return;
       try {
-        const response = await fetch(speakUrl, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text, voice: pollyVoiceId(voiceId ?? ""), rate: speechRate }),
-        });
-        if (!response.ok) return;
+        const spoken = await speakReply(
+          {
+            text,
+            voiceId,
+            ratePercent: speechRate,
+            languageCode: listenLanguage,
+            cloud: cloudSpeech,
+          },
+          analysisRef,
+        );
+        if (!spoken) return;
 
-        const url = URL.createObjectURL(await response.blob());
-        const audio = new Audio(url);
-        audioRef.current = audio;
-        speechRef.current = { text, audio };
-
-        await routeForAnalysis(analysisRef, audio);
-        await new Promise<void>((resolve) => {
-          audio.onended = () => resolve();
-          audio.onerror = () => resolve();
-          audio.play().catch(() => resolve());
-        });
-
-        URL.revokeObjectURL(url);
+        speechRef.current = spoken.reply;
+        await spoken.done;
+        if (speechRef.current === spoken.reply) speechRef.current = null;
       } catch {
         // A failed synthesis is not a failed answer; the text is on screen.
-      } finally {
-        audioRef.current = null;
         speechRef.current = null;
       }
     },
-    [speechEnabled, voiceId, speechRate],
+    [speechEnabled, cloudSpeech, voiceId, speechRate, listenLanguage],
   );
 
   const send = useCallback(
@@ -172,35 +174,42 @@ export function useAssistant(options: AssistantOptions): AssistantState {
 
         let reply = "";
         try {
-          const converseUrl = api("/api/converse");
-          if (!converseUrl) throw new Error(NO_SERVER);
-          const response = await fetch(converseUrl, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              messages: next,
-              // No sensors are running behind a floating chat window, and
-              // saying so plainly is better than sending a snapshot of
-              // nulls that reads like a failed measurement.
-              context: { vitals: null, voice: null, sessionSeconds: 0 },
-              persona: [persona, mirrorLanguageInstructions()].filter(Boolean).join("\n"),
-            }),
-            signal: controller.signal,
-          });
-
-          if (!response.ok) {
-            const detail = await response.json().catch(() => ({ error: "Request failed." }));
-            throw new Error(detail.error ?? "Request failed.");
-          }
-          if (!response.body) throw new Error("No response body.");
-
-          const reader = response.body.getReader();
-          const decoder = new TextDecoder();
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            reply += decoder.decode(value, { stream: true });
+          if (sourceRef.current === "guide") {
+            // No context: this window cannot see the sensors, so the guide
+            // has nothing to read back and says so if it is asked to.
+            reply = guideReply(text).text;
             setPartial(reply);
+          } else {
+            const converseUrl = api("/api/converse");
+            if (!converseUrl) throw new Error(NO_SERVER);
+            const response = await fetch(converseUrl, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                messages: next,
+                // No sensors are running behind a floating chat window, and
+                // saying so plainly is better than sending a snapshot of
+                // nulls that reads like a failed measurement.
+                context: { vitals: null, voice: null, sessionSeconds: 0 },
+                persona: [persona, mirrorLanguageInstructions()].filter(Boolean).join("\n"),
+              }),
+              signal: controller.signal,
+            });
+
+            if (!response.ok) {
+              const detail = await response.json().catch(() => ({ error: "Request failed." }));
+              throw new Error(detail.error ?? "Request failed.");
+            }
+            if (!response.body) throw new Error("No response body.");
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              reply += decoder.decode(value, { stream: true });
+              setPartial(reply);
+            }
           }
         } catch (err) {
           if (controller.signal.aborted) return;
@@ -303,8 +312,7 @@ export function useAssistant(options: AssistantOptions): AssistantState {
   }, [startListening, stopListening]);
 
   const stopSpeaking = useCallback(() => {
-    audioRef.current?.pause();
-    audioRef.current = null;
+    speechRef.current?.stop();
     speechRef.current = null;
     setStatus("idle");
   }, []);
@@ -319,18 +327,13 @@ export function useAssistant(options: AssistantOptions): AssistantState {
   const readSpeech = useCallback((): SpeechFrame | null => {
     const current = speechRef.current;
     if (!current) return null;
-    return {
-      text: current.text,
-      time: current.audio.currentTime,
-      duration: Number.isFinite(current.audio.duration) ? current.audio.duration : null,
-      level: measureLevel(analysisRef.current),
-    };
+    return { text: current.text, ...current.read() };
   }, []);
 
   useEffect(
     () => () => {
       abortRef.current?.abort();
-      audioRef.current?.pause();
+      speechRef.current?.stop();
       recognitionRef.current?.abort();
     },
     [],

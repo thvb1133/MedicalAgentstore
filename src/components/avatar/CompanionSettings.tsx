@@ -27,7 +27,8 @@ import {
   voiceForLanguage,
   type VoiceOption,
 } from "@/lib/avatar/voices";
-import { api, NO_SERVER } from "@/lib/paths";
+import { speakReply, type SpokenReply } from "@/lib/avatar/say";
+import type { SpeechAnalysis } from "@/lib/avatar/speechAudio";
 
 /**
  * Choosing and editing the companion.
@@ -52,17 +53,26 @@ export function CompanionSettings({
   onChange,
   onClose,
   speechAvailable,
+  cloudSpeech = false,
   portrait,
 }: {
   profile: CompanionProfile;
   onChange: (next: CompanionProfile) => void;
   onClose: () => void;
+  /** Whether anything can speak at all — Polly, or the browser's own voice. */
   speechAvailable: boolean;
+  /**
+   * Whether that voice is Polly. It changes what can honestly be said about
+   * the choice below: without it these are still the voices the companion
+   * would use, but the preview is whatever this browser happens to have.
+   */
+  cloudSpeech?: boolean;
   portrait: ReturnType<typeof usePortrait>;
 }) {
   const [previewing, setPreviewing] = useState<string | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const speechRef = useRef<SpokenReply | null>(null);
+  const analysisRef = useRef<SpeechAnalysis | null>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
 
   const avatar = avatarOr(profile.avatarId);
@@ -81,8 +91,8 @@ export function CompanionSettings({
 
   useEffect(
     () => () => {
-      audioRef.current?.pause();
-      audioRef.current = null;
+      speechRef.current?.stop();
+      speechRef.current = null;
     },
     [],
   );
@@ -106,33 +116,30 @@ export function CompanionSettings({
   const previewVoice = async (voice: VoiceOption) => {
     if (!speechAvailable) return;
     setPreviewError(null);
-    audioRef.current?.pause();
+    speechRef.current?.stop();
     setPreviewing(voice.id);
-    try {
-      const speakUrl = api("/api/speak");
-      if (!speakUrl) throw new Error(NO_SERVER);
-      const response = await fetch(speakUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          text: PREVIEW_LINE,
-          voice: voice.polly ?? voice.id,
-          rate: profile.speechRate,
-        }),
-      });
-      if (!response.ok) throw new Error("Preview failed");
-      const url = URL.createObjectURL(await response.blob());
-      const audio = new Audio(url);
-      audioRef.current = audio;
-      audio.onended = () => {
-        setPreviewing(null);
-        URL.revokeObjectURL(url);
-      };
-      await audio.play();
-    } catch {
-      setPreviewError("Could not play the preview. Check the AWS credentials.");
+
+    const spoken = await speakReply(
+      {
+        text: PREVIEW_LINE,
+        voiceId: voice.id,
+        ratePercent: profile.speechRate,
+        languageCode: profile.languageCode,
+        cloud: cloudSpeech,
+      },
+      analysisRef,
+    );
+
+    if (!spoken) {
+      setPreviewError("Nothing on this device could speak the preview.");
       setPreviewing(null);
+      return;
     }
+
+    speechRef.current = spoken.reply;
+    await spoken.done;
+    if (speechRef.current === spoken.reply) speechRef.current = null;
+    setPreviewing(null);
   };
 
   return (
@@ -325,9 +332,11 @@ export function CompanionSettings({
           <Section
             title={`Voice — ${language.endonym}`}
             detail={
-              speechAvailable
-                ? "Press play to hear each one before you choose."
-                : "Add AWS credentials to hear the replies spoken aloud."
+              !speechAvailable
+                ? "Nothing on this device can speak, so the replies are shown as text."
+                : cloudSpeech
+                  ? "Press play to hear each one before you choose."
+                  : "Without AWS credentials these are spoken by your browser's own voice, so the preview is whatever voice it has for this language rather than the one named."
             }
           >
             <div className="grid gap-2 sm:grid-cols-2">
@@ -423,9 +432,11 @@ export function CompanionSettings({
               <Toggle
                 label="Speak the replies out loud"
                 detail={
-                  speechAvailable
+                  cloudSpeech
                     ? "Uses Amazon Polly."
-                    : "Needs AWS credentials before it can be turned on."
+                    : speechAvailable
+                      ? "Uses your browser's own voice. Add AWS credentials for Polly, which sounds better."
+                      : "This browser has no speech synthesiser and there are no AWS credentials."
                 }
                 checked={profile.speakReplies && speechAvailable}
                 disabled={!speechAvailable}

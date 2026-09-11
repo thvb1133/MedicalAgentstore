@@ -7,9 +7,9 @@ import { useAssistant } from "@/hooks/useAssistant";
 import { usePortrait } from "@/hooks/usePortrait";
 import { useCompanionProfile } from "@/hooks/useCompanionProfile";
 import { useServices } from "@/hooks/useServices";
+import { browserSpeechAvailable } from "@/lib/avatar/browserSpeech";
 import { avatarOr } from "@/lib/avatar/presets";
 import { personaInstructions } from "@/lib/avatar/profile";
-import { STATIC_BUILD } from "@/lib/paths";
 
 /**
  * The assistant that follows you around the site.
@@ -34,14 +34,25 @@ export function AssistantDock() {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState("");
   const { profile, ready } = useCompanionProfile();
-  const { services } = useServices();
+  const { services, loaded: servicesLoaded } = useServices();
   const portrait = usePortrait();
+
+  const [browserVoice, setBrowserVoice] = useState(false);
+  useEffect(() => setBrowserVoice(browserSpeechAvailable()), []);
+
+  // The dock is on every page, including pages loaded before the service
+  // check has come back, so treat "not yet known" as having a model. A brief
+  // wrong guess is better than answering the first question from the guide
+  // when Claude was there all along.
+  const guideOnly = servicesLoaded && !services.claude;
 
   const avatar = avatarOr(profile.avatarId);
   const assistant = useAssistant({
     persona: personaInstructions(profile),
     listenLanguage: profile.languageCode,
-    speechEnabled: services.polly && profile.speakReplies,
+    speechEnabled: (services.polly || browserVoice) && profile.speakReplies,
+    cloudSpeech: services.polly,
+    source: guideOnly ? "guide" : "model",
     voiceId: profile.voiceId,
     speechRate: profile.speechRate,
   });
@@ -160,7 +171,11 @@ export function AssistantDock() {
 
           <div ref={logRef} className="flex-1 space-y-2.5 overflow-y-auto px-3.5 py-3">
             {assistant.messages.length === 0 && !assistant.partial && (
-              <Welcome name={avatar.name} onPick={(q) => assistant.send(q)} />
+              <Welcome
+                name={avatar.name}
+                guide={guideOnly}
+                onPick={(q) => assistant.send(q)}
+              />
             )}
 
             {assistant.messages.map((message, i) => (
@@ -251,8 +266,10 @@ export function AssistantDock() {
           </form>
 
           <p className="border-t border-[var(--border)] px-3.5 py-2 text-[10.5px] leading-snug text-[var(--faint)]">
-            General information, not medical advice, and it cannot see your measurements. Replies
-            come back in the language you write in.
+            General information, not medical advice, and it cannot see your measurements.{" "}
+            {guideOnly
+              ? "Answers come from a written list, in English."
+              : "Replies come back in the language you write in."}
           </p>
         </div>
       )}
@@ -280,36 +297,46 @@ const OPENERS = [
   "How should I sit for a good reading?",
 ];
 
-function Welcome({ name, onPick }: { name: string; onPick: (q: string) => void }) {
+function Welcome({
+  name,
+  guide,
+  onPick,
+}: {
+  name: string;
+  guide: boolean;
+  onPick: (q: string) => void;
+}) {
   return (
     <div className="py-1">
       <p className="text-[12.5px] leading-relaxed text-[var(--muted)]">
         Hello — I&rsquo;m {name}. Ask me about anything on this site, or about what a reading
-        means. Write or speak in whatever language you like.
+        means.{" "}
+        {guide
+          ? "The three below are the sort of thing I can answer."
+          : "Write or speak in whatever language you like."}
       </p>
       {/*
         Said before the first question rather than after it fails. Somebody
-        who types into a chat window and gets an error concludes the site is
-        broken; somebody told first that this copy has no model behind it
-        knows the measurements are still real.
+        who types into a chat window and gets an answer from a list, without
+        being told, has been misled about what they are talking to.
       */}
-      {STATIC_BUILD && (
+      {guide && (
         <p className="mt-2 rounded-lg bg-[var(--surface-raised)] px-2.5 py-2 text-[11.5px] leading-relaxed text-[var(--faint)]">
-          On this hosted copy I have no language model behind me, so I cannot answer. Every
-          measurement on the site still works — all of it runs in your browser.
+          There is no language model behind this copy, so my answers come from a written list
+          and only cover the common questions — in English, whatever language you ask in. Every
+          measurement on the site is real and runs in your browser.
         </p>
       )}
       <div className="mt-2.5 flex flex-col items-start gap-1.5">
-        {!STATIC_BUILD &&
-          OPENERS.map((question) => (
-            <button
-              key={question}
-              onClick={() => onPick(question)}
-              className="rounded-lg border border-[var(--border)] px-2.5 py-1.5 text-left text-[11.5px] text-[var(--muted)] transition-colors hover:text-[var(--foreground)]"
-            >
-              {question}
-            </button>
-          ))}
+        {OPENERS.map((question) => (
+          <button
+            key={question}
+            onClick={() => onPick(question)}
+            className="rounded-lg border border-[var(--border)] px-2.5 py-1.5 text-left text-[11.5px] text-[var(--muted)] transition-colors hover:text-[var(--foreground)]"
+          >
+            {question}
+          </button>
+        ))}
       </div>
     </div>
   );
