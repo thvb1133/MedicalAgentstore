@@ -19,8 +19,8 @@ export function HostedNotice() {
         <span className="font-medium text-[var(--foreground)]">Live demonstration.</span> Every
         measurement here is real and runs entirely in your browser — camera and microphone never
         leave the device. The AI conversation, the neural voice and the cloud history need API
-        keys, so they are switched off on this public copy; run it locally with your own keys for
-        those.
+        keys, and a key has to live on a server; this copy is a static site with none, so those
+        three are off. Run it on a server of your own with your keys to get them.
       </p>
     </div>
   );

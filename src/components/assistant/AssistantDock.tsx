@@ -11,6 +11,7 @@ import { useServices } from "@/hooks/useServices";
 import { browserSpeechAvailable } from "@/lib/avatar/browserSpeech";
 import { avatarOr } from "@/lib/avatar/presets";
 import { personaInstructions } from "@/lib/avatar/profile";
+import { STATIC_BUILD } from "@/lib/paths";
 
 /**
  * The assistant that follows you around the site.
@@ -354,8 +355,11 @@ function Welcome({
       {guide && (
         <p className="mt-2 rounded-lg bg-[var(--surface-raised)] px-2.5 py-2 text-[11.5px] leading-relaxed text-[var(--faint)]">
           There is no language model behind this copy, so my answers come from a written list
-          and only cover the common questions — in English, whatever language you ask in. Every
-          measurement on the site is real and runs in your browser.
+          and only cover the common questions — in English, whatever language you ask in.{" "}
+          {STATIC_BUILD
+            ? "This is the free public copy, a static site with no server, so no key can be kept here."
+            : "Set an Anthropic key and restart to have the real conversation."}{" "}
+          Every measurement on the site is real and runs in your browser.
         </p>
       )}
       <div className="mt-2.5 flex flex-col items-start gap-1.5">

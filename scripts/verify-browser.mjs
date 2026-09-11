@@ -1420,6 +1420,9 @@ async function main() {
       .then((response) => (response.ok ? response.json() : null))
       .catch(() => null);
     const keyed = behind?.claude === true;
+    // No `/api/services` at all means the static export rather than a server
+    // that happens to have no key, and the two need different advice.
+    const staticExport = behind === null;
 
     console.log(keyed ? "\nWith Claude behind it" : "\nWith no keys behind it");
     consoleErrors.length = 0;
@@ -1573,6 +1576,12 @@ async function main() {
         scripted: /scripted guide/i.test(body),
         measurementsStandUp: /every measurement on the page is real/i.test(body),
         overclaims: /talking back needs claude/i.test(body),
+        // On a static copy there is no process to set a variable on and
+        // nothing to restart, so this instruction sends somebody to configure
+        // a key the page could never reach and then wonder why the message
+        // did not change.
+        unfollowable: /and restart/i.test(body),
+        saysWhy: /static site/i.test(body) && /no server/i.test(body),
       };
     });
     record("the companion can be typed to", companion.typeable);
@@ -1584,6 +1593,13 @@ async function main() {
     );
     if (!keyed) {
       record("it says the measurements are unaffected", companion.measurementsStandUp);
+    }
+    if (staticExport) {
+      record("it explains that a static copy cannot hold a key", companion.saysWhy);
+      record(
+        "it does not ask for a variable to be set on a machine that has none",
+        !companion.unfollowable,
+      );
     }
     record("nothing claims the conversation is simply unavailable", !companion.overclaims);
 

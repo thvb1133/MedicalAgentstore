@@ -43,7 +43,7 @@ import type { LiveContext } from "@/lib/conversation";
 import { addLocalReport } from "@/lib/history";
 import type { MeasurementReport } from "@/lib/report";
 import type { VoiceAnalysis } from "@/lib/voice/engine";
-import { api } from "@/lib/paths";
+import { api, STATIC_BUILD } from "@/lib/paths";
 
 const WINDOW_SECONDS = 30;
 
@@ -360,9 +360,17 @@ export function CompanionAgent({ agent }: { agent: AgentDefinition }) {
               ? "They are spoken aloud by your browser's own voice, and you can talk or type to ask."
               : "This browser has no speech synthesiser, so they are shown as text."}{" "}
             Every measurement on the page is real and unaffected: all of it runs
-            here and never needed a key. Set{" "}
-            <span className="tabular">ANTHROPIC_API_KEY</span> and restart for the
-            full conversation.
+            here and never needed a key.{" "}
+            {/*
+              Two different situations, and the wrong instruction is worse than
+              none. On a static copy there is no process to set a variable on
+              and no server to restart, so "set ANTHROPIC_API_KEY and restart"
+              sends somebody to configure a key that this page could never
+              reach — and then to wonder why nothing changed.
+            */}
+            {STATIC_BUILD
+              ? "This is the free public copy: a static site with no server behind it, so a key cannot be kept here — which is also why nothing you do on this page is sent anywhere. The full conversation needs the project running on a server of your own."
+              : "Set ANTHROPIC_API_KEY and restart for the full conversation."}
           </span>
         </div>
       )}

@@ -129,12 +129,12 @@ const TOPICS: Topic[] = [
     id: "keys",
     cues: ["claude", "api key", "anthropic", "polly", "why can't you talk", "no reply"],
     answer:
-      "The full conversation needs a language model, and this published copy has no server to hold the key, so you are getting me instead — a short list of written answers. Everything you can measure here is unaffected by that, because none of it ever needed a key. Run the project with an Anthropic key and the real assistant takes over, with far better answers than mine.",
+      "The full conversation needs a language model, and a key for one has to live on a server. No key is reaching this copy, so you are getting me instead — a short list of written answers. Everything you can measure here is unaffected by that, because none of it ever needed a key. Run this on a server with an Anthropic key and the real assistant takes over, with far better answers than mine.",
   },
 ];
 
 const FALLBACK =
-  "I only have a short list of written answers here, and that one is not on it. Try asking about heart rate, heart rate variability, breathing, blood pressure, voice measures, signal quality, lighting or privacy. For anything beyond that, the full assistant needs an Anthropic key — this published copy has no server to keep one in.";
+  "I only have a short list of written answers here, and that one is not on it. Try asking about heart rate, heart rate variability, breathing, blood pressure, voice measures, signal quality, lighting or privacy. For anything beyond that, the full assistant needs an Anthropic key on a server, and no key is reaching this copy.";
 
 const PREFIX = "Scripted guide";
 
