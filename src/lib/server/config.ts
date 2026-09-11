@@ -1,5 +1,7 @@
 import "server-only";
 
+import { readSetting } from "@/lib/env";
+
 /**
  * Server configuration, read once from the environment.
  *
@@ -15,16 +17,24 @@ export interface ServiceAvailability {
   transcribe: boolean;
 }
 
+const read = (name: string, fallback = "") => readSetting(process.env, name, fallback);
+
 export const config = {
-  anthropicApiKey: process.env.ANTHROPIC_API_KEY ?? "",
+  anthropicApiKey: read("ANTHROPIC_API_KEY"),
   /** Sonnet is the right trade-off here: fast enough to feel live, strong enough to reason about numbers. */
-  claudeModel: process.env.CLAUDE_MODEL ?? "claude-sonnet-4-5-20250929",
-  awsRegion: process.env.AWS_REGION ?? "eu-west-2",
-  awsAccessKeyId: process.env.AWS_ACCESS_KEY_ID ?? "",
-  awsSecretAccessKey: process.env.AWS_SECRET_ACCESS_KEY ?? "",
+  claudeModel: read("CLAUDE_MODEL", "claude-sonnet-4-5-20250929"),
+  /**
+   * No default. A guessed region is worse than a missing one: the credentials
+   * are valid, so the request is signed and sent, and it fails somewhere on
+   * another continent for reasons that have nothing to do with the region.
+   * Unset means AWS is simply reported as not configured.
+   */
+  awsRegion: read("AWS_REGION"),
+  awsAccessKeyId: read("AWS_ACCESS_KEY_ID"),
+  awsSecretAccessKey: read("AWS_SECRET_ACCESS_KEY"),
   /** Optional: leave unset to keep sessions in the browser only. */
-  sessionBucket: process.env.SANJIVANI_SESSION_BUCKET ?? "",
-  pollyVoice: process.env.POLLY_VOICE_ID ?? "Amy",
+  sessionBucket: read("SANJIVANI_SESSION_BUCKET"),
+  pollyVoice: read("POLLY_VOICE_ID", "Amy"),
 } as const;
 
 export function hasAwsCredentials(): boolean {

@@ -1405,7 +1405,23 @@ async function main() {
      * question gets an answer, that the answer admits it came from a list,
      * and that nothing anywhere claims a model is present.
      */
-    console.log("\nWith no keys behind it");
+    /**
+     * Which of the two modes this build is in.
+     *
+     * A keyed server and a keyless static export are both supported states
+     * and they behave differently on purpose, so the suite asks rather than
+     * assumes. A static export has no `/api/services` at all, which is itself
+     * the answer.
+     */
+    // Asked from Node rather than from the page, because on a static export
+    // this request is a 404 by design and the page is being watched for
+    // exactly those.
+    const behind = await fetch(`${BASE}/api/services`)
+      .then((response) => (response.ok ? response.json() : null))
+      .catch(() => null);
+    const keyed = behind?.claude === true;
+
+    console.log(keyed ? "\nWith Claude behind it" : "\nWith no keys behind it");
     consoleErrors.length = 0;
 
     /**
@@ -1435,6 +1451,14 @@ async function main() {
       };
     });
 
+    // Polly's audio arrives over the network, so the keyed voice is checked
+    // by watching for the request rather than by intercepting the browser's
+    // synthesiser, which is not the one being used.
+    const spokenByPolly = [];
+    page.on("response", (res) => {
+      if (res.url().includes("/api/speak")) spokenByPolly.push(res.status());
+    });
+
     await page.goto(`${BASE}/`, { waitUntil: "networkidle0" });
     await page.click('button[aria-label^="Ask "]');
     await page.waitForSelector('input[aria-label="Your question"]', { timeout: 5000 });
@@ -1443,48 +1467,104 @@ async function main() {
       const el = document.querySelector('div[role="dialog"][aria-label^="Ask "]');
       return /no language model/i.test(el?.textContent ?? "");
     });
-    record("it says up front that there is no model behind it", warned);
+    record(
+      keyed
+        ? "it does not claim to be a guide when a model is present"
+        : "it says up front that there is no model behind it",
+      keyed ? !warned : warned,
+    );
 
-    await page.type('input[aria-label="Your question"]', "what is hrv");
+    await page.type(
+      'input[aria-label="Your question"]',
+      keyed ? "In one short sentence, what is HRV?" : "what is hrv",
+    );
     await page.keyboard.press("Enter");
 
+    /**
+     * The two modes are recognised by different things, and deliberately not
+     * by "some text appeared". The guide has one fixed sentence, so it can be
+     * matched exactly. Claude's answer cannot be predicted at all, so what is
+     * checked is that a reply arrived, that it is a real answer rather than
+     * an error, and that it does not carry the scripted label — a keyed build
+     * quietly falling back to the list would otherwise pass unnoticed.
+     */
     const answered = await page
       .waitForFunction(
-        () => {
+        (guide) => {
           const el = document.querySelector('div[role="dialog"][aria-label^="Ask "]');
-          return /variation in the gaps between beats/i.test(el?.textContent ?? "");
+          if (!el) return false;
+          if (guide) return /variation in the gaps between beats/i.test(el.textContent ?? "");
+          // Claude's wording cannot be predicted, so this looks for a reply
+          // bubble instead: a paragraph of some length that is neither the
+          // question just asked nor the panel's own standing text.
+          return [...el.querySelectorAll("p")].some((p) => {
+            const text = p.textContent ?? "";
+            return (
+              text.length > 60 &&
+              !/not medical advice/i.test(text) &&
+              !/Hello .{0,3} I/i.test(text) &&
+              !text.includes("In one short sentence")
+            );
+          });
         },
-        { timeout: 10000 },
+        { timeout: 30000 },
+        !keyed,
       )
       .then(() => true)
       .catch(() => false);
-    record("a question asked with no key still gets an answer", answered);
+    record(
+      keyed ? "Claude answers a question asked from the dock" : "a question asked with no key still gets an answer",
+      answered,
+    );
 
     const labelled = await page.evaluate(() => {
       const el = document.querySelector('div[role="dialog"][aria-label^="Ask "]');
       return /scripted guide/i.test(el?.textContent ?? "");
     });
-    record("the answer says it came from a written list", labelled);
+    record(
+      keyed
+        ? "the answer is Claude's rather than the fallback list"
+        : "the answer says it came from a written list",
+      keyed ? !labelled : labelled,
+    );
 
-    const said = await page
-      .waitForFunction(() => window.__spoken.length > 0, { timeout: 8000 })
-      .then(() => page.evaluate(() => window.__spoken[0]))
-      .catch(() => null);
-    record(
-      "the reply is handed to the browser's own voice",
-      typeof said === "string" && /variation in the gaps between beats/i.test(said),
-      said ? `${said.slice(0, 40)}…` : "nothing was spoken",
-    );
-    record(
-      "the spoken version says it is scripted too",
-      typeof said === "string" && /scripted guide/i.test(said),
-    );
+    if (keyed) {
+      const heard = await page
+        .waitForFunction(() => true, { timeout: 100 })
+        .then(async () => {
+          for (let i = 0; i < 40 && spokenByPolly.length === 0; i++) {
+            await new Promise((r) => setTimeout(r, 500));
+          }
+          return spokenByPolly[0] ?? null;
+        })
+        .catch(() => null);
+      record(
+        "the reply is spoken by Polly",
+        heard === 200,
+        heard === null ? "no request to /api/speak" : `HTTP ${heard}`,
+      );
+    } else {
+      const said = await page
+        .waitForFunction(() => window.__spoken.length > 0, { timeout: 8000 })
+        .then(() => page.evaluate(() => window.__spoken[0]))
+        .catch(() => null);
+      record(
+        "the reply is handed to the browser's own voice",
+        typeof said === "string" && /variation in the gaps between beats/i.test(said),
+        said ? `${said.slice(0, 40)}…` : "nothing was spoken",
+      );
+      record(
+        "the spoken version says it is scripted too",
+        typeof said === "string" && /scripted guide/i.test(said),
+      );
+    }
 
     await page.keyboard.press("Escape");
 
     // The companion page is where the disabled input used to be, and where
     // the banner used to say the conversation was simply unavailable.
     await page.goto(`${BASE}/agents/companion`, { waitUntil: "networkidle0" });
+    await new Promise((r) => setTimeout(r, 1500));
     const companion = await page.evaluate(() => {
       const input = document.querySelector('form input[type="text"], form input:not([type])');
       const body = document.body.textContent ?? "";
@@ -1495,13 +1575,20 @@ async function main() {
         overclaims: /talking back needs claude/i.test(body),
       };
     });
-    record("the companion can still be typed to", companion.typeable);
-    record("it says plainly that it is a scripted guide", companion.scripted);
-    record("it says the measurements are unaffected", companion.measurementsStandUp);
+    record("the companion can be typed to", companion.typeable);
+    record(
+      keyed
+        ? "no fallback notice is shown when Claude is configured"
+        : "it says plainly that it is a scripted guide",
+      keyed ? !companion.scripted : companion.scripted,
+    );
+    if (!keyed) {
+      record("it says the measurements are unaffected", companion.measurementsStandUp);
+    }
     record("nothing claims the conversation is simply unavailable", !companion.overclaims);
 
     record(
-      "the keyless path ran without console errors",
+      keyed ? "the keyed path ran without console errors" : "the keyless path ran without console errors",
       consoleErrors.length === 0,
       consoleErrors.slice(0, 2).join(" | "),
     );

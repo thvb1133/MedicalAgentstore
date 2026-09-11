@@ -55,7 +55,7 @@ npm test              # 485 tests against synthetic signals with known ground tr
 npm run typecheck
 npm run lint
 npm run build
-npm run verify:browser  # 131 checks in a real Chrome; needs the dev server running
+npm run verify:browser  # 141+ checks in a real Chrome; needs a server running
 ```
 
 `verify:browser` covers what the unit tests structurally cannot. It serves the
@@ -422,10 +422,10 @@ Measurement needs no keys at all. These add optional layers on top:
 | Variable | Enables | Notes |
 |---|---|---|
 | `ANTHROPIC_API_KEY` | Plain-language interpretation, and the companion's replies | Claude, streamed |
-| `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `AWS_REGION` | Polly text-to-speech | Neural voices |
+| `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `AWS_REGION` | Polly text-to-speech | Neural voices. The region has no default — a guessed one fails on another continent for reasons that look nothing like a wrong region |
 | `SANJIVANI_SESSION_BUCKET` | Measurement history and trend | S3, plus the AWS credentials above |
 
-Copy `.env.example` to `.env.local` and fill in what you have.
+Copy `.env.example` to `.env.local` and fill in what you have. Every one of these is trimmed on the way in (`src/lib/env.ts`): a pasted credential arrives with a stray space more often than anyone would like, and the resulting failure is invisible — the value is truthy, so the service reports itself configured, the request is signed and sent, and AWS returns a 400 that the SDK surfaces as `UnknownError`.
 
 **Claude's system prompt is a safety layer, not a personality.** It forbids diagnosis, requires respecting the confidence score, forbids inventing values the engine deliberately withheld, requires flagging uncalibrated blood pressure as untrustworthy, and defines an escalation rule for possible stroke signs or an out-of-range heart rate at good signal quality. The companion's prompt adds the rules that matter for a live spoken agent: never interpret the voice acoustics, write for the ear rather than the screen, and hand off immediately on emergency symptoms or any expression of self-harm.
 
@@ -447,6 +447,8 @@ Everything before publishing — tests, lint, types, models, the export — runs
 
 It is a **static export with no server behind it**, which is possible because none of the measurement was ever on a server. The signal processing is arithmetic in the browser and the models are files, so a static host serves the whole of it. What a keyless build loses is exactly three things — Claude's replies, Polly's voice and the S3 mirror — and the site says so in a line across the top rather than leaving somebody to read a silent assistant as a broken product.
 
+**Setting a key will not change that link, and it is worth being clear why.** A key has to live somewhere that can keep it, which means a server: the browser never sees `ANTHROPIC_API_KEY`, it calls `/api/converse` and the server calls Anthropic. GitHub Pages serves files and runs nothing, so there is no `/api/converse` there to hold anything — which is also why the key cannot leak from the published copy. Configure the keys and the same code answers with Claude and speaks with Polly; it just has to be running somewhere with a Node process, which is what the Amplify section below is for. The companion falls back to a written guide and the browser's own voice precisely so the published copy is a smaller product rather than a broken one.
+
 ```bash
 npm run build:static                        # → out/, for a domain root
 BASE_PATH=/repo npm run build:static        # → out/, for a project page
@@ -457,7 +459,7 @@ Two details make that work, and both are the sort of thing that fails silently r
 - **`output: "export"` will not build with route handlers in the tree**, because a POST handler cannot be a file. `scripts/build-static.mjs` parks `src/app/api` under a leading underscore for the duration of the build — the App Router's own convention for a folder that is not a route — and restores it in a `finally` that also runs on Ctrl-C.
 - **Next rewrites only the paths it controls.** `<Link>`, the router and its own chunks get the base path; a string handed to `fetch`, to `audioWorklet.addModule`, to MediaPipe's fileset resolver or to an `<img src>` does not, because Next never sees it. Those are precisely the paths carrying the three task models, the capture worklet and the presenter photographs — so under a project-page path the site would render perfectly and measure nothing at all. Every one of them goes through `asset()` in `src/lib/paths.ts`, and `tests/paths.test.ts` walks the source for absolute public paths that skipped it, because no amount of type-checking catches this one.
 
-The exported site is verified the same way the server build is: `VERIFY_BASE_URL=… npm run verify:browser` drives the real thing under its base path, and all 131 checks pass against the static copy — the camera opens, the face landmarker initialises from our own origin, the worklet loads, the signer draws.
+The exported site is verified the same way the server build is: `VERIFY_BASE_URL=… npm run verify:browser` drives the real thing under its base path — the camera opens, the face landmarker initialises from our own origin, the worklet loads, the signer draws. The suite asks `/api/services` which of the two modes it is looking at and checks the right one: against a keyed server it insists Claude answers and Polly speaks and that nothing calls itself a guide; against the static export it insists the written guide answers, says so, and reaches the browser's synthesiser. 143/143 pass against the published site, 141/141 against a keyed server.
 
 ---
 
