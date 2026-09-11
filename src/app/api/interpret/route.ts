@@ -17,7 +17,7 @@ export const maxDuration = 30;
  * measurement, respect the confidence score, never diagnose, and escalate to
  * emergency care for a defined set of findings.
  */
-const SYSTEM_PROMPT = `You are the interpretation layer of Sanjivani Setu, a research tool that measures physiological signals using an ordinary laptop camera.
+const SYSTEM_PROMPT = `You are the interpretation layer of Sanjivani, a research tool that measures physiological signals using an ordinary laptop camera.
 
 You receive a measurement report as JSON and explain it to the person who was measured.
 

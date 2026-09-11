@@ -23,14 +23,8 @@ export function Wordmark({ className = "" }: { className?: string }) {
           strokeLinejoin="round"
         />
       </svg>
-      <span className="flex flex-col leading-none">
-        <span className="text-[15px] font-semibold tracking-tight text-[var(--foreground)]">
-          Sanjivani Setu
-        </span>
-        {/* No letter-spacing here: tracking breaks Devanagari conjunct forms. */}
-        <span lang="hi" className="mt-1 text-[11px] leading-none text-[var(--faint)]">
-          संजीवनी सेतु
-        </span>
+      <span className="text-[15px] font-semibold tracking-tight text-[var(--foreground)]">
+        Sanjivani
       </span>
     </Link>
   );

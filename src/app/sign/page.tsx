@@ -4,7 +4,7 @@ import { SignPageTabs } from "@/components/sign/SignPageTabs";
 import { SiteHeader } from "@/components/SiteHeader";
 
 export const metadata: Metadata = {
-  title: "Sign language — Sanjivani Setu",
+  title: "Sign language — Sanjivani",
   description:
     "A signing avatar with two hands, body placement and facial markers, plus the ASL manual alphabet for names and numbers.",
 };

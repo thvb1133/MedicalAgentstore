@@ -219,7 +219,7 @@ describe("calendar export", () => {
   it("carries the start, end and a stable identifier", () => {
     expect(ics).toContain("DTSTART:20260304T100000Z");
     expect(ics).toContain("DTEND:20260304T102000Z");
-    expect(ics).toContain("UID:abc123@sanjivani-setu");
+    expect(ics).toContain("UID:abc123@sanjivani");
   });
 
   it("includes a reminder, since we cannot send one ourselves", () => {

@@ -50,7 +50,7 @@ export function SiteFooter() {
         <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-[1.4fr_repeat(3,1fr)]">
           <div className="max-w-xs">
             <p className="text-[15px] font-semibold tracking-tight text-[var(--foreground)]">
-              Sanjivani Setu
+              Sanjivani
             </p>
             <p className="mt-2 text-[12.5px] leading-relaxed text-[var(--muted)]">
               Physiological measurement from an ordinary camera, computed on the device and
@@ -99,7 +99,7 @@ export function SiteFooter() {
         <div className="mt-10 border-t border-[var(--border)] pt-6">
           <p className="text-[11.5px] leading-relaxed text-[var(--faint)]">
             <span className="font-medium text-[var(--muted)]">Not a medical device.</span>{" "}
-            Sanjivani Setu produces wellness and research estimates. It does not diagnose, treat
+            Sanjivani produces wellness and research estimates. It does not diagnose, treat
             or rule out any condition, and it holds no CE mark, FDA clearance or other medical
             device registration. Blood pressure is shown only after calibration against a real
             arm cuff. If you feel unwell, contact a clinician.

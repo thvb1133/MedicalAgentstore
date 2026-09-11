@@ -4,7 +4,7 @@ import Link from "next/link";
 import { SiteHeader } from "@/components/SiteHeader";
 
 export const metadata: Metadata = {
-  title: "Get started — Sanjivani Setu",
+  title: "Get started — Sanjivani",
   description:
     "Try it in the browser, run the whole thing locally, or deploy it. What each route gives you and what it costs.",
 };

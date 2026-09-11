@@ -11,7 +11,7 @@ const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Sanjivani Setu — camera as a clinical instrument",
+  title: "Sanjivani — camera as a clinical instrument",
   description:
     "Contactless vitals, alertness, tremor and stroke screening from an ordinary laptop camera. Every measurement carries a confidence score.",
 };

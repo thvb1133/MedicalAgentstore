@@ -15,6 +15,9 @@
 
 import type { MeasurementReport } from "./report";
 
+// Keeps the old prefix deliberately. Renaming the product does not entitle us
+// to discard the measurements somebody has already taken, and a storage key is
+// an identifier rather than a name — nobody reads it but the browser.
 const STORAGE_KEY = "sanjivani-setu.history.v1";
 
 /** Enough for a couple of months of daily use before anything is dropped. */

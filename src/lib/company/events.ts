@@ -1,5 +1,5 @@
 /**
- * Where Sanjivani Setu will be in person.
+ * Where Sanjivani will be in person.
  *
  * Deliberately empty until something is booked. An events page that lists a
  * conference nobody from here is attending is the cheapest possible lie and

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { SiteHeader } from "@/components/SiteHeader";
 
 export const metadata: Metadata = {
-  title: "Platform — Sanjivani Setu",
+  title: "Platform — Sanjivani",
   description:
     "Camera-based physiological measurement that runs in the browser: heart rate, HRV, breathing, alertness, tremor, voice acoustics and calibrated blood pressure, each reported with its own confidence.",
 };
@@ -90,7 +90,7 @@ export default function PlatformPage() {
           </h1>
 
           <p className="mt-5 text-[15px] leading-relaxed text-[var(--muted)]">
-            Sanjivani Setu turns an ordinary laptop or phone camera into a measurement
+            Sanjivani turns an ordinary laptop or phone camera into a measurement
             instrument. Over twenty physiological quantities, extracted in the browser, each
             reported with the confidence it has earned and withheld when it has not.
           </p>

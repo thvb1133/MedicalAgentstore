@@ -4,7 +4,7 @@ import { AppointmentsView } from "@/components/appointments/AppointmentsView";
 import { SiteHeader } from "@/components/SiteHeader";
 
 export const metadata: Metadata = {
-  title: "Appointments — Sanjivani Setu",
+  title: "Appointments — Sanjivani",
   description:
     "Book a time to sit down with a measurement agent, and put it in your own calendar.",
 };

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { SiteHeader } from "@/components/SiteHeader";
 
 export const metadata: Metadata = {
-  title: "Accuracy and evidence — Sanjivani Setu",
+  title: "Accuracy and evidence — Sanjivani",
   description:
     "What has been validated, how, and what has not. Measured errors against synthetic ground truth, the state of camera-based blood pressure, and the regulatory position stated plainly.",
 };

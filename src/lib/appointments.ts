@@ -202,7 +202,7 @@ export function toIcs(appointment: Appointment, origin = ""): string {
   const url = origin ? `${origin}/agents/${appointment.agentSlug}` : "";
 
   const description = [
-    `A ${appointment.agentName} session with Sanjivani Setu.`,
+    `A ${appointment.agentName} session with Sanjivani.`,
     appointment.reason ? `Reason: ${appointment.reason}` : "",
     url ? `Open: ${url}` : "",
     "This is a wellness measurement, not a medical appointment.",
@@ -215,15 +215,15 @@ export function toIcs(appointment: Appointment, origin = ""): string {
   return [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
-    "PRODID:-//Sanjivani Setu//Appointments//EN",
+    "PRODID:-//Sanjivani//Appointments//EN",
     "CALSCALE:GREGORIAN",
     "METHOD:PUBLISH",
     "BEGIN:VEVENT",
-    `UID:${appointment.id}@sanjivani-setu`,
+    `UID:${appointment.id}@sanjivani`,
     `DTSTAMP:${icsStamp(new Date(appointment.createdAt))}`,
     `DTSTART:${icsStamp(start)}`,
     `DTEND:${icsStamp(endsAt(appointment))}`,
-    `SUMMARY:${icsEscape(`${appointment.agentName} — Sanjivani Setu`)}`,
+    `SUMMARY:${icsEscape(`${appointment.agentName} — Sanjivani`)}`,
     `DESCRIPTION:${icsEscape(description)}`,
     url ? `URL:${url}` : "",
     "BEGIN:VALARM",

@@ -5,9 +5,9 @@ import { SiteHeader } from "@/components/SiteHeader";
 import { EVENTS, formatRange, upcoming, type CompanyEvent } from "@/lib/company/events";
 
 export const metadata: Metadata = {
-  title: "Events — Sanjivani Setu",
+  title: "Events — Sanjivani",
   description:
-    "Where to meet Sanjivani Setu in person, and how to arrange a demonstration when there is no event nearby.",
+    "Where to meet Sanjivani in person, and how to arrange a demonstration when there is no event nearby.",
 };
 
 const PRESENCE_LABEL: Record<CompanyEvent["presence"], string> = {
@@ -91,7 +91,7 @@ export default function EventsPage() {
                 Nothing booked yet.
               </p>
               <p className="mx-auto mt-3 max-w-xl text-[13px] leading-relaxed text-[var(--muted)]">
-                When Sanjivani Setu is at a conference, it will be listed here with the dates,
+                When Sanjivani is at a conference, it will be listed here with the dates,
                 the city and whether we are exhibiting, speaking or simply attending. Nothing
                 will be listed that we are not actually going to.
               </p>

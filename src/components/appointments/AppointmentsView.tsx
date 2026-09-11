@@ -101,7 +101,7 @@ export function AppointmentsView() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `sanjivani-setu-${appointment.id}.ics`;
+    link.download = `sanjivani-${appointment.id}.ics`;
     link.click();
     URL.revokeObjectURL(url);
   };

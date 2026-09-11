@@ -5,7 +5,7 @@ import { FastAgent } from "@/components/agents/FastAgent";
 import { getAgent } from "@/lib/agents/registry";
 
 export const metadata = {
-  title: "FAST Stroke Check — Sanjivani Setu",
+  title: "FAST Stroke Check — Sanjivani",
   description:
     "Face symmetry, arm drift and speech clarity, as a prompt to seek emergency care.",
 };

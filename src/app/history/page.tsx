@@ -4,7 +4,7 @@ import { HistoryView } from "@/components/history/HistoryView";
 import { SiteHeader } from "@/components/SiteHeader";
 
 export const metadata: Metadata = {
-  title: "History — Sanjivani Setu",
+  title: "History — Sanjivani",
   description:
     "Every measurement you have taken, the trend across them, and what Claude makes of it.",
 };
