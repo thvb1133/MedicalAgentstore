@@ -9,17 +9,32 @@ import { PulseTrace } from "@/components/PulseTrace";
 import { QualityMeter } from "@/components/QualityMeter";
 import { SafetyNotice } from "@/components/SafetyNotice";
 import { BpCalibrationCard } from "@/components/agents/BpCalibrationCard";
+import { BreathingCoach } from "@/components/vitals/BreathingCoach";
 import { useCamera } from "@/hooks/useCamera";
+import { useCompanionProfile } from "@/hooks/useCompanionProfile";
 import { useFaceTracking, type FaceFrame } from "@/hooks/useFaceTracking";
+import { useServices } from "@/hooks/useServices";
 import { useVitals } from "@/hooks/useVitals";
+import {
+  FairnessNote,
+  LightingGate,
+  RegionAgreement,
+  RhythmNote,
+} from "@/components/vitals/TrustPanels";
 import type { AgentDefinition } from "@/lib/agents/registry";
+import { addLocalReport } from "@/lib/history";
 import type { MeasurementReport } from "@/lib/report";
+import { api } from "@/lib/paths";
 
 const WINDOW_SECONDS = 30;
 
 export function VitalsAgent({ agent }: { agent: AgentDefinition }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [running, setRunning] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  const { services } = useServices();
+  const { profile } = useCompanionProfile();
 
   const camera = useCamera(videoRef, running, { idealFps: 30 });
   const { snapshot, pushFrame, reset, calibration, addCuffReading, clearCalibration } =
@@ -78,9 +93,44 @@ export function VitalsAgent({ agent }: { agent: AgentDefinition }) {
           unit: "mmHg",
           note: snapshot.bp.message,
         },
+        {
+          label: "Breath coherence",
+          value: snapshot.coherence.score,
+          unit: "/100",
+          note: "How concentrated the heart-rate variability is around one rhythm. A biofeedback measure, not a health one.",
+        },
       ],
     };
   }, [agent, snapshot, quality, hrv]);
+
+  /**
+   * File the measurement when the session ends.
+   *
+   * Not on every update: the report memo recomputes several times a second
+   * and vitals only settle after the first half-minute, so saving
+   * continuously would fill the history with the noisy early part of every
+   * session. A reading too poor to mean anything is not saved at all, since
+   * it would sit in the trend implying it was a measurement.
+   */
+  const reportRef = useRef(report);
+  reportRef.current = report;
+
+  const saveOnStop = useCallback(() => {
+    const current = reportRef.current;
+    if (!current || current.quality < 0.35) return;
+    addLocalReport(current);
+    const mirror = api("/api/sessions");
+    if (services.s3 && mirror) {
+      void fetch(mirror, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ profileId: profile.profileId, report: current }),
+      }).catch(() => {
+        // The local copy already succeeded; the mirror is a convenience.
+      });
+    }
+    setSaved(true);
+  }, [profile.profileId, services.s3]);
 
   const hint = !running
     ? null
@@ -101,7 +151,7 @@ export function VitalsAgent({ agent }: { agent: AgentDefinition }) {
             hint={hint}
             overlay={
               running && (
-                <div className="absolute inset-x-0 bottom-0 h-0.5 bg-[#ffffff14]">
+                <div className="absolute inset-x-0 bottom-0 h-0.5 bg-[var(--track)]">
                   <div
                     className="h-full transition-[width] duration-300"
                     style={{
@@ -118,6 +168,7 @@ export function VitalsAgent({ agent }: { agent: AgentDefinition }) {
             <button
               onClick={() => {
                 if (running) {
+                  saveOnStop();
                   setRunning(false);
                 } else {
                   reset();
@@ -150,12 +201,28 @@ export function VitalsAgent({ agent }: { agent: AgentDefinition }) {
             </span>
           </div>
 
+          {saved && !running && (
+            <p className="text-[12px]" style={{ color: "var(--good)" }}>
+              Saved to your history.{" "}
+              <a href="/history" className="underline underline-offset-2">
+                See the trend
+              </a>
+              .
+            </p>
+          )}
+
           <PulseTrace
             waveform={snapshot.waveform}
             fs={snapshot.waveformFs}
             beatTimesS={snapshot.beatTimesS}
             colour={agent.accent}
             label="Pulse waveform — extracted from skin colour"
+          />
+
+          <BreathingCoach
+            coherence={snapshot.coherence}
+            breathingRateBpm={snapshot.breathingRateBpm}
+            accent={agent.accent}
           />
         </div>
 
@@ -212,6 +279,11 @@ export function VitalsAgent({ agent }: { agent: AgentDefinition }) {
           </div>
 
           <QualityMeter quality={quality} />
+
+          <LightingGate lighting={snapshot.lighting} />
+          <RegionAgreement fusion={snapshot.fusion} />
+          <RhythmNote rhythm={snapshot.rhythm} />
+          <FairnessNote tone={snapshot.tone} />
 
           <BpCalibrationCard
             estimate={snapshot.bp}

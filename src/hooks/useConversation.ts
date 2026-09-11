@@ -2,7 +2,11 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { speakReply, type SpokenReply } from "@/lib/avatar/say";
+import type { SpeechAnalysis } from "@/lib/avatar/speechAudio";
 import type { ConversationTurn, LiveContext } from "@/lib/conversation";
+import { guideReply } from "@/lib/guide";
+import { api, NO_SERVER } from "@/lib/paths";
 
 /**
  * The turn-taking loop.
@@ -36,10 +40,35 @@ export type ConversationStatus =
 export interface ConversationOptions {
   /** Read the current sensor snapshot. Called once per turn, at submission. */
   getContext: () => LiveContext;
-  /** Whether Polly is configured; when false the reply is shown but not spoken. */
+  /** Whether replies should be spoken at all. */
   speechEnabled: boolean;
+  /**
+   * Whether Polly is configured. When false the browser's own synthesiser is
+   * used instead, which is a worse voice and an enormously better outcome
+   * than a companion that never says anything.
+   */
+  cloudSpeech?: boolean;
+  /**
+   * Where the replies come from. "guide" answers from a written list with no
+   * model behind it, which is what the published copy has to do; it is never
+   * chosen silently, because the interface has to say which one is talking.
+   */
+  source?: "model" | "guide";
   /** Voice for the spoken reply. */
   voiceId?: string;
+  /** Speaking rate as a percentage of normal. */
+  speechRate?: number;
+  /**
+   * Manner-of-speaking instructions from the chosen avatar and the person's
+   * accessibility settings. Appended below the safety rules, never above.
+   */
+  persona?: string;
+  /**
+   * BCP-47 tag for speech recognition. Recognising the wrong language does
+   * not degrade gracefully — it returns confident nonsense, which is worse
+   * than returning nothing.
+   */
+  languageCode?: string;
 }
 
 export interface ConversationState {
@@ -70,6 +99,25 @@ export interface ConversationState {
    * listening — so it is safe to call on every detected silence.
    */
   onTurnEnd: () => void;
+  /**
+   * What is being spoken right now, for anything that has to move in time
+   * with it. Polled rather than pushed through state: the presenter wants an
+   * answer on every animation frame, and re-rendering the conversation sixty
+   * times a second to deliver it would be absurd.
+   */
+  readSpeech: () => SpeechFrame | null;
+}
+
+/** A snapshot of the reply currently coming out of the speaker. */
+export interface SpeechFrame {
+  /** The full text being spoken, which the mouth shapes are derived from. */
+  text: string;
+  /** Seconds into playback. */
+  time: number;
+  /** Total length, or null before the browser has decoded enough to know. */
+  duration: number | null;
+  /** Loudness right now, 0 to 1, or null where it cannot be measured. */
+  level: number | null;
 }
 
 interface SpeechRecognitionLike {
@@ -101,7 +149,26 @@ function getConstructor(): RecognitionCtor | null {
 }
 
 export function useConversation(options: ConversationOptions): ConversationState {
-  const { getContext, speechEnabled, voiceId } = options;
+  const {
+    getContext,
+    speechEnabled,
+    cloudSpeech = false,
+    source = "model",
+    voiceId,
+    speechRate = 100,
+    persona,
+    languageCode = "en-GB",
+  } = options;
+
+  // Read at submission time so changing the avatar mid-conversation takes
+  // effect on the next turn rather than being captured when the loop started.
+  const personaRef = useRef(persona);
+  personaRef.current = persona;
+
+  // Read the same way, so that a key arriving — or the service check coming
+  // back — switches the next turn over rather than the one after it.
+  const sourceRef = useRef(source);
+  sourceRef.current = source;
 
   const [status, setStatus] = useState<ConversationStatus>("idle");
   const [turns, setTurns] = useState<ConversationTurn[]>([]);
@@ -113,8 +180,9 @@ export function useConversation(options: ConversationOptions): ConversationState
   const blockedRef = useRef(false);
 
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const speechRef = useRef<SpokenReply | null>(null);
+  const analysisRef = useRef<SpeechAnalysis | null>(null);
 
   const finalTextRef = useRef("");
   const interimTextRef = useRef("");
@@ -142,7 +210,7 @@ export function useConversation(options: ConversationOptions): ConversationState
     }
 
     const recognition = new Ctor();
-    recognition.lang = "en-GB";
+    recognition.lang = languageCode;
     recognition.continuous = true;
     recognition.interimResults = true;
 
@@ -204,7 +272,7 @@ export function useConversation(options: ConversationOptions): ConversationState
       // Starting an already-started recogniser throws; harmless.
     }
     recognitionRef.current = recognition;
-  }, []);
+  }, [languageCode]);
 
   const stopRecognition = useCallback(() => {
     const recognition = recognitionRef.current;
@@ -218,34 +286,35 @@ export function useConversation(options: ConversationOptions): ConversationState
     recognitionRef.current = null;
   }, []);
 
-  /** Speak a reply through Polly, resolving when playback finishes. */
+  /** Say a reply out loud, resolving when the voice stops. */
   const speak = useCallback(
     async (text: string): Promise<void> => {
       if (!speechEnabled || !text.trim()) return;
 
-      const response = await fetch("/api/speak", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text, voice: voiceId }),
-      });
-      if (!response.ok) throw new Error("Speech synthesis failed.");
+      const spoken = await speakReply(
+        {
+          text,
+          voiceId,
+          ratePercent: speechRate,
+          languageCode,
+          cloud: cloudSpeech,
+        },
+        analysisRef,
+      );
+      if (!spoken) return;
 
-      const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
-      const audio = new Audio(url);
-      audioRef.current = audio;
-
-      await new Promise<void>((resolve) => {
-        audio.onended = () => resolve();
-        audio.onerror = () => resolve();
-        audio.play().catch(() => resolve());
-      });
-
-      URL.revokeObjectURL(url);
-      audioRef.current = null;
+      speechRef.current = spoken.reply;
+      await spoken.done;
+      if (speechRef.current === spoken.reply) speechRef.current = null;
     },
-    [speechEnabled, voiceId],
+    [speechEnabled, cloudSpeech, voiceId, speechRate, languageCode],
   );
+
+  const readSpeech = useCallback((): SpeechFrame | null => {
+    const current = speechRef.current;
+    if (!current) return null;
+    return { text: current.text, ...current.read() };
+  }, []);
 
   const submit = useCallback(
     async (utterance: string) => {
@@ -265,26 +334,37 @@ export function useConversation(options: ConversationOptions): ConversationState
 
       let reply = "";
       try {
-        const response = await fetch("/api/converse", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ messages: nextTurns, context: getContextRef.current() }),
-          signal: controller.signal,
-        });
-
-        if (!response.ok) {
-          const detail = await response.json().catch(() => ({ error: "Request failed." }));
-          throw new Error(detail.error ?? "Request failed.");
-        }
-        if (!response.body) throw new Error("No response body.");
-
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          reply += decoder.decode(value, { stream: true });
+        if (sourceRef.current === "guide") {
+          reply = guideReply(text, getContextRef.current()).text;
           setPartial(reply);
+        } else {
+          const converseUrl = api("/api/converse");
+          if (!converseUrl) throw new Error(NO_SERVER);
+          const response = await fetch(converseUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              messages: nextTurns,
+              context: getContextRef.current(),
+              persona: personaRef.current,
+            }),
+            signal: controller.signal,
+          });
+
+          if (!response.ok) {
+            const detail = await response.json().catch(() => ({ error: "Request failed." }));
+            throw new Error(detail.error ?? "Request failed.");
+          }
+          if (!response.body) throw new Error("No response body.");
+
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder();
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            reply += decoder.decode(value, { stream: true });
+            setPartial(reply);
+          }
         }
       } catch (err) {
         if (controller.signal.aborted) return;
@@ -356,8 +436,8 @@ export function useConversation(options: ConversationOptions): ConversationState
     runningRef.current = false;
     abortRef.current?.abort();
     stopRecognition();
-    audioRef.current?.pause();
-    audioRef.current = null;
+    speechRef.current?.stop();
+    speechRef.current = null;
     setStatus("idle");
     setInterim("");
     setPartial("");
@@ -365,8 +445,8 @@ export function useConversation(options: ConversationOptions): ConversationState
 
   const interrupt = useCallback(() => {
     if (statusRef.current !== "speaking") return;
-    audioRef.current?.pause();
-    audioRef.current = null;
+    speechRef.current?.stop();
+    speechRef.current = null;
     if (runningRef.current) {
       setStatus("listening");
       startRecognition();
@@ -386,7 +466,7 @@ export function useConversation(options: ConversationOptions): ConversationState
       runningRef.current = false;
       abortRef.current?.abort();
       stopRecognition();
-      audioRef.current?.pause();
+      speechRef.current?.stop();
     },
     [stopRecognition],
   );
@@ -404,5 +484,7 @@ export function useConversation(options: ConversationOptions): ConversationState
     sendText,
     interrupt,
     onTurnEnd: handleTurnEnd,
+    readSpeech,
   };
 }
+

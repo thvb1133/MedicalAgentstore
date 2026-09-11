@@ -5,7 +5,7 @@ import { VitalsAgent } from "@/components/agents/VitalsAgent";
 import { getAgent } from "@/lib/agents/registry";
 
 export const metadata = {
-  title: "Contactless Vitals — Sanjivani Setu",
+  title: "Contactless Vitals — Sanjivani",
   description:
     "Heart rate, HRV, breathing and calibrated blood pressure from a laptop camera.",
 };

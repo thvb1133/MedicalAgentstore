@@ -3,12 +3,14 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 
 import { CameraStage } from "@/components/CameraStage";
+import { CognitiveLoadPanel } from "@/components/cognition/CognitiveLoadPanel";
 import { InterpretationPanel } from "@/components/InterpretationPanel";
 import { MetricTile } from "@/components/MetricTile";
 import { SafetyNotice } from "@/components/SafetyNotice";
 import { useCamera } from "@/hooks/useCamera";
 import { useFaceTracking, type FaceFrame } from "@/hooks/useFaceTracking";
 import { AlertnessTracker, type AlertnessResult } from "@/lib/alertness/engine";
+import { CognitiveLoadTracker, type CognitiveLoad } from "@/lib/cognition/load";
 import {
   FACE_POINTS,
   eyeAspectRatio,
@@ -42,17 +44,22 @@ const EMPTY: AlertnessResult = {
   windowSeconds: 0,
 };
 
+const EMPTY_LOAD: CognitiveLoad = new CognitiveLoadTracker().analyse([]);
+
 export function AlertnessAgent({ agent }: { agent: AgentDefinition }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const trackerRef = useRef(new AlertnessTracker(60));
+  const loadRef = useRef(new CognitiveLoadTracker());
   const lastAnalysisRef = useRef(0);
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<AlertnessResult>(EMPTY);
+  const [load, setLoad] = useState<CognitiveLoad>(EMPTY_LOAD);
 
   const camera = useCamera(videoRef, running, { idealFps: 30 });
 
   const handleFrame = useCallback((frame: FaceFrame) => {
     const lm = frame.landmarks;
+    const gaze = lm ? horizontalGaze(lm) : null;
     trackerRef.current.push({
       timestampMs: frame.timestampMs,
       ear: lm
@@ -62,18 +69,31 @@ export function AlertnessAgent({ agent }: { agent: AgentDefinition }) {
         : null,
       mar: lm ? mouthAspectRatio(lm) : null,
       pitch: lm ? headPitch(lm) : null,
-      gaze: lm ? horizontalGaze(lm) : null,
+      gaze,
+    });
+
+    // The same landmark pass feeds both measures: fatigue is about how long
+    // the eyes close, load is about how wide the pupils are and where the
+    // gaze goes. One camera, one detector, two questions.
+    loadRef.current.push({
+      timestampMs: frame.timestampMs,
+      pupilRatio: frame.pupil?.ratio ?? null,
+      pupilContrast: frame.pupil?.contrast ?? 0,
+      gazeX: gaze,
+      luma: frame.skin?.luma ?? null,
     });
 
     if (frame.timestampMs - lastAnalysisRef.current < 400) return;
     lastAnalysisRef.current = frame.timestampMs;
     setResult(trackerRef.current.analyse());
+    setLoad(loadRef.current.analyse(trackerRef.current.blinkEndTimes()));
   }, []);
 
   const tracking = useFaceTracking(
     videoRef,
     running && camera.status === "ready",
     handleFrame,
+    { pupils: true },
   );
 
   const style = LEVEL_STYLE[result.level];
@@ -120,9 +140,25 @@ export function AlertnessAgent({ agent }: { agent: AgentDefinition }) {
               : null,
           unit: "% of time",
         },
+        {
+          label: "Cognitive load",
+          value: load.index,
+          unit: "/100",
+          confidence: load.confidence,
+          note:
+            load.index === null
+              ? "Not enough of the eye signals were readable."
+              : `From ${[
+                  load.pupil.value !== null ? "pupil size" : null,
+                  load.blink.value !== null ? "blink rate" : null,
+                  load.scan.value !== null ? "gaze scan" : null,
+                ]
+                  .filter(Boolean)
+                  .join(", ")}, against this person's own resting baseline. An interface-effort measure, not a clinical one.`,
+        },
       ],
     };
-  }, [agent, result]);
+  }, [agent, result, load]);
 
   return (
     <div className="space-y-4">
@@ -150,7 +186,9 @@ export function AlertnessAgent({ agent }: { agent: AgentDefinition }) {
                   setRunning(false);
                 } else {
                   trackerRef.current.reset();
+                  loadRef.current.reset();
                   setResult(EMPTY);
+                  setLoad(EMPTY_LOAD);
                   setRunning(true);
                 }
               }}
@@ -206,7 +244,7 @@ export function AlertnessAgent({ agent }: { agent: AgentDefinition }) {
               </span>
               <span className="text-xs text-[var(--muted)]">/100</span>
             </div>
-            <div className="mt-4 h-1.5 w-full overflow-hidden rounded-full bg-[#1b2431]">
+            <div className="mt-4 h-1.5 w-full overflow-hidden rounded-full bg-[var(--track)]">
               <div
                 className="h-full rounded-full transition-all duration-500"
                 style={{
@@ -258,6 +296,8 @@ export function AlertnessAgent({ agent }: { agent: AgentDefinition }) {
               pending="Tracking iris"
             />
           </div>
+
+          <CognitiveLoadPanel load={load} />
         </div>
       </div>
 

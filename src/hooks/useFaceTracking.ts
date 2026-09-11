@@ -5,17 +5,37 @@ import type { FaceLandmarkerResult } from "@mediapipe/tasks-vision";
 
 import { loadFaceLandmarker } from "@/lib/vision/mediapipe";
 import {
+  FACE_POINTS,
+  irisCircle,
   sampleRegions,
+  sampleRegionsSeparately,
   skinRegions,
   type Landmark,
   type RegionSample,
 } from "@/lib/vision/faceRegions";
+import { combinePupils, measurePupil, type PupilSample } from "@/lib/vision/pupil";
 
 export interface FaceFrame {
   timestampMs: number;
   landmarks: Landmark[] | null;
-  /** Mean skin colour of the forehead and cheeks, when a face was found. */
+  /** Mean skin colour of the forehead and cheeks together. */
   skin: RegionSample | null;
+  /**
+   * The same skin, region by region: forehead, left cheek, right cheek.
+   *
+   * Kept alongside the combined figure rather than replacing it because the
+   * two answer different questions. Downstream, the pulse is fused from the
+   * regions weighted by how much each looks like a pulse, while skin tone and
+   * the blood-pressure features want the whole face at once.
+   */
+  skinRegions: RegionSample[] | null;
+  /**
+   * Pupil size as a fraction of the iris, when the caller asked for it.
+   *
+   * Off by default because it costs two extra pixel readbacks per frame and
+   * only one screen wants it.
+   */
+  pupil: PupilSample | null;
   /** Named blendshape scores from MediaPipe, e.g. eyeBlinkLeft. */
   blendshapes: Map<string, number> | null;
   /** Normalised head displacement since the previous frame. */
@@ -42,10 +62,16 @@ export interface FaceTrackingState {
  * without restarting the whole detection loop on every React render, which
  * would otherwise reset the measurement each time state updated.
  */
+export interface FaceTrackingOptions {
+  /** Read the pupils out of the pixels as well as the landmarks. */
+  pupils?: boolean;
+}
+
 export function useFaceTracking(
   videoRef: React.RefObject<HTMLVideoElement | null>,
   enabled: boolean,
   onFrame: (frame: FaceFrame) => void,
+  options: FaceTrackingOptions = {},
 ): FaceTrackingState {
   const [state, setState] = useState<FaceTrackingState>({
     status: "idle",
@@ -56,6 +82,7 @@ export function useFaceTracking(
 
   const onFrameRef = useRef(onFrame);
   onFrameRef.current = onFrame;
+  const wantPupils = options.pupils ?? false;
 
   useEffect(() => {
     if (!enabled) {
@@ -105,6 +132,8 @@ export function useFaceTracking(
 
           const landmarks = (result.faceLandmarks?.[0] as Landmark[] | undefined) ?? null;
           let skin: RegionSample | null = null;
+          let perRegion: RegionSample[] | null = null;
+          let pupil: PupilSample | null = null;
           let motion = 0;
 
           if (landmarks) {
@@ -137,6 +166,32 @@ export function useFaceTracking(
                 y1: (b.y1 * h - by0) / rh,
               }));
               skin = sampleRegions(image.data, rw, rh, local);
+              perRegion = sampleRegionsSeparately(image.data, rw, rh, local);
+            }
+
+            if (wantPupils) {
+              // One small readback per eye rather than one big one: an iris
+              // is a couple of dozen pixels across, and cropping tight keeps
+              // this well under the cost of the detector itself.
+              const eye = (iris: readonly number[]) => {
+                const circle = irisCircle(landmarks, iris, w, h);
+                if (!circle) return null;
+                const pad = circle.r * 1.6;
+                const x0 = Math.max(0, Math.floor(circle.x - pad));
+                const y0 = Math.max(0, Math.floor(circle.y - pad));
+                const x1 = Math.min(w, Math.ceil(circle.x + pad));
+                const y1 = Math.min(h, Math.ceil(circle.y + pad));
+                if (x1 - x0 < 6 || y1 - y0 < 6) return null;
+                const patch = ctx.getImageData(x0, y0, x1 - x0, y1 - y0);
+                return measurePupil(
+                  patch.data,
+                  x1 - x0,
+                  y1 - y0,
+                  { x: circle.x - x0, y: circle.y - y0 },
+                  circle.r,
+                );
+              };
+              pupil = combinePupils(eye(FACE_POINTS.leftIris), eye(FACE_POINTS.rightIris));
             }
 
             const nose = landmarks[1];
@@ -159,6 +214,8 @@ export function useFaceTracking(
             timestampMs: now,
             landmarks,
             skin,
+            skinRegions: perRegion,
+            pupil,
             blendshapes,
             motion,
             videoWidth: video.videoWidth,
@@ -198,7 +255,7 @@ export function useFaceTracking(
       cancelled = true;
       cancelAnimationFrame(rafId);
     };
-  }, [enabled, videoRef]);
+  }, [enabled, videoRef, wantPupils]);
 
   return state;
 }

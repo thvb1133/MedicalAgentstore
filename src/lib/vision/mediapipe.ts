@@ -14,21 +14,23 @@ import type {
   PoseLandmarker,
 } from "@mediapipe/tasks-vision";
 
-const LOCAL_WASM = "/mediapipe/wasm";
+import { asset as publicPath } from "../paths";
+
+const LOCAL_WASM = publicPath("/mediapipe/wasm");
 const CDN_WASM =
   "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.0.1/wasm";
 
 const MODELS = {
   face: {
-    local: "/mediapipe/models/face_landmarker.task",
+    local: publicPath("/mediapipe/models/face_landmarker.task"),
     cdn: "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
   },
   hand: {
-    local: "/mediapipe/models/hand_landmarker.task",
+    local: publicPath("/mediapipe/models/hand_landmarker.task"),
     cdn: "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
   },
   pose: {
-    local: "/mediapipe/models/pose_landmarker_lite.task",
+    local: publicPath("/mediapipe/models/pose_landmarker_lite.task"),
     cdn: "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task",
   },
 } as const;
@@ -91,6 +93,43 @@ export async function loadFaceLandmarker(): Promise<FaceLandmarker> {
     })();
   }
   return facePromise;
+}
+
+let stillFacePromise: Promise<FaceLandmarker> | null = null;
+
+/**
+ * A second face landmarker, in image mode, for one-off stills.
+ *
+ * A landmarker's running mode is fixed when it is created, and the shared one
+ * above is in video mode because that is what every live agent needs. Asking
+ * a video-mode landmarker about a photograph means feeding it a made-up
+ * timestamp and hoping its tracking state does not carry over from the
+ * webcam. A separate instance costs a second model load and removes the
+ * question entirely.
+ *
+ * Used when somebody uploads a photograph to be their presenter. Blendshapes
+ * are off: a still face has no expression worth reading, and only the mesh
+ * matters.
+ */
+export async function loadStillFaceLandmarker(): Promise<FaceLandmarker> {
+  if (!stillFacePromise) {
+    stillFacePromise = (async () => {
+      const [{ FaceLandmarker: FL }, resolver, modelAssetPath] = await Promise.all([
+        import("@mediapipe/tasks-vision"),
+        getVisionResolver(),
+        resolveAsset(MODELS.face),
+      ]);
+      return FL.createFromOptions(resolver as never, {
+        baseOptions: { modelAssetPath, delegate: "GPU" },
+        runningMode: "IMAGE",
+        numFaces: 1,
+        outputFaceBlendshapes: false,
+        outputFacialTransformationMatrixes: false,
+        minFaceDetectionConfidence: 0.5,
+      });
+    })();
+  }
+  return stillFacePromise;
 }
 
 let handPromise: Promise<HandLandmarker> | null = null;

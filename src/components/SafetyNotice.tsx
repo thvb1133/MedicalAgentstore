@@ -41,7 +41,7 @@ export function SafetyNotice({
             <span className="font-semibold text-[var(--foreground)]">
               Not a medical device.
             </span>{" "}
-            Sanjivani Setu produces wellness and research estimates from a
+            Sanjivani produces wellness and research estimates from a
             consumer camera. It does not diagnose, treat or rule out any
             condition. If you feel unwell, contact a clinician.
           </p>

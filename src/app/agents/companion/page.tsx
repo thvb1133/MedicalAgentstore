@@ -5,7 +5,7 @@ import { CompanionAgent } from "@/components/agents/CompanionAgent";
 import { getAgent } from "@/lib/agents/registry";
 
 export const metadata = {
-  title: "Live Wellness Companion — Sanjivani Setu",
+  title: "Live Wellness Companion — Sanjivani",
   description:
     "A spoken conversation with an assistant that measures your pulse from the camera and the acoustics of your voice from the microphone.",
 };

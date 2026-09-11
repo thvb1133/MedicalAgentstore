@@ -112,7 +112,7 @@ export default function Home() {
           </h1>
 
           <p className="mt-5 text-[15px] leading-relaxed text-[var(--muted)]">
-            Sanjivani Setu is a store of measurement agents that each extract a
+            Sanjivani is a store of measurement agents that each extract a
             real physiological signal from an ordinary camera and microphone.
             Pulse from the colour of your skin. Fatigue from your eyelids.
             Tremor frequency from your fingertips. The steadiness of your vocal
@@ -127,6 +127,28 @@ export default function Home() {
             measurement that hides its own uncertainty is worse than no
             measurement at all.
           </p>
+
+          <div className="mt-7 flex flex-wrap gap-2.5">
+            <Link
+              href="/agents/companion"
+              className="rounded-lg px-4 py-2.5 text-[13px] font-semibold transition-opacity hover:opacity-90"
+              style={{ background: "var(--accent)", color: "#141414" }}
+            >
+              Start a conversation
+            </Link>
+            <Link
+              href="/appointments"
+              className="rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] px-4 py-2.5 text-[13px] font-medium text-[var(--muted)] transition-colors hover:text-[var(--foreground)]"
+            >
+              Book a time
+            </Link>
+            <Link
+              href="/history"
+              className="rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] px-4 py-2.5 text-[13px] font-medium text-[var(--muted)] transition-colors hover:text-[var(--foreground)]"
+            >
+              See your history
+            </Link>
+          </div>
         </section>
 
         <section className="mt-12">

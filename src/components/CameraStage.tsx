@@ -76,7 +76,7 @@ export function CameraStage({
       {camera.status === "requesting" && (
         <div className="absolute inset-0 flex items-center justify-center bg-black/70">
           <div className="text-center">
-            <div className="shimmer mx-auto h-1 w-32 rounded-full bg-[#1b2431]" />
+            <div className="shimmer mx-auto h-1 w-32 rounded-full bg-[var(--track)]" />
             <p className="mt-4 text-sm text-[var(--muted)]">
               Waiting for camera permission
             </p>
@@ -86,7 +86,7 @@ export function CameraStage({
 
       {trackingStatus === "loading" && camera.status === "ready" && (
         <div className="absolute inset-x-0 bottom-0 bg-black/70 px-4 py-2 backdrop-blur">
-          <div className="shimmer h-1 w-full rounded-full bg-[#1b2431]" />
+          <div className="shimmer h-1 w-full rounded-full bg-[var(--track)]" />
           <p className="mt-2 text-[11px] text-[var(--muted)]">
             Loading the face model — first run only, about 4 MB
           </p>

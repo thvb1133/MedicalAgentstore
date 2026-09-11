@@ -189,7 +189,7 @@ export function FastAgent({ agent }: { agent: AgentDefinition }) {
                 sequence: smile at the camera, hold both arms out for ten
                 seconds, then read a sentence aloud. It takes under a minute.
               </p>
-              <div className="mt-4 rounded-lg border border-[#f8717155] bg-[#f871710d] p-3.5">
+              <div className="mt-4 rounded-lg border border-[var(--bad)]/35 bg-[var(--bad)]/[0.06] p-3.5">
                 <p className="text-[12.5px] font-medium leading-relaxed text-[var(--foreground)]">
                   If you or someone near you already has sudden weakness,
                   drooping, confusion or difficulty speaking, stop and call
@@ -307,7 +307,7 @@ export function FastAgent({ agent }: { agent: AgentDefinition }) {
                         });
                         setStep("result");
                       }}
-                      className="rounded-lg border border-[#f8717155] bg-[#f871710d] px-3.5 py-2 text-[12px] font-medium text-[var(--bad)]"
+                      className="rounded-lg border border-[var(--bad)]/35 bg-[var(--bad)]/[0.06] px-3.5 py-2 text-[12px] font-medium text-[var(--bad)]"
                     >
                       Speech sounded wrong
                     </button>

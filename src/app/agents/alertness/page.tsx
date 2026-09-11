@@ -5,7 +5,7 @@ import { AlertnessAgent } from "@/components/agents/AlertnessAgent";
 import { getAgent } from "@/lib/agents/registry";
 
 export const metadata = {
-  title: "Alertness & Gaze — Sanjivani Setu",
+  title: "Alertness & Gaze — Sanjivani",
   description:
     "PERCLOS, blink behaviour, head nodding and gaze combined into a fatigue score.",
 };
