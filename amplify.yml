@@ -1,9 +1,22 @@
 # AWS Amplify Hosting build specification.
 #
-# Set ANTHROPIC_API_KEY, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION
-# and optionally SANJIVANI_SESSION_BUCKET under App settings → Environment
-# variables. Amplify detects Next.js and provisions the SSR runtime the API
-# routes need; nothing extra is required for that.
+# Set these under App settings → Environment variables:
+#
+#   ANTHROPIC_API_KEY
+#   SANJIVANI_AWS_ACCESS_KEY_ID
+#   SANJIVANI_AWS_SECRET_ACCESS_KEY
+#   SANJIVANI_AWS_REGION
+#   SANJIVANI_SESSION_BUCKET        (optional; history stays in the browser without it)
+#
+# The prefixed AWS names are deliberate. Amplify runs under an execution role
+# and fills AWS_ACCESS_KEY_ID and its siblings with that role's own short-lived
+# credentials, so an app reading the plain names here would sign Polly requests
+# as the platform rather than as the account holder — and fail against a
+# principal nobody configured. The prefixed names cannot collide and take
+# precedence; the plain ones still work anywhere that is not AWS.
+#
+# Amplify detects Next.js and provisions the SSR runtime the API routes need;
+# nothing extra is required for that.
 
 version: 1
 frontend:

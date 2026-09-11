@@ -1,6 +1,6 @@
 import "server-only";
 
-import { readSetting } from "@/lib/env";
+import { readFirst, readSetting } from "@/lib/env";
 
 /**
  * Server configuration, read once from the environment.
@@ -19,6 +19,18 @@ export interface ServiceAvailability {
 
 const read = (name: string, fallback = "") => readSetting(process.env, name, fallback);
 
+/**
+ * AWS settings accept a prefixed alias that takes precedence.
+ *
+ * On a host that is itself AWS, the plain names belong to the platform: an
+ * Amplify or Lambda execution role puts its own credentials there, and a
+ * deployment can end up signing Polly requests as the platform rather than as
+ * the account holder. `SANJIVANI_AWS_ACCESS_KEY_ID` and its siblings cannot
+ * collide with anything, so they win where they are set.
+ */
+const readAws = (suffix: string) =>
+  readFirst(process.env, [`SANJIVANI_AWS_${suffix}`, `AWS_${suffix}`]);
+
 export const config = {
   anthropicApiKey: read("ANTHROPIC_API_KEY"),
   /** Sonnet is the right trade-off here: fast enough to feel live, strong enough to reason about numbers. */
@@ -29,9 +41,9 @@ export const config = {
    * another continent for reasons that have nothing to do with the region.
    * Unset means AWS is simply reported as not configured.
    */
-  awsRegion: read("AWS_REGION"),
-  awsAccessKeyId: read("AWS_ACCESS_KEY_ID"),
-  awsSecretAccessKey: read("AWS_SECRET_ACCESS_KEY"),
+  awsRegion: readAws("REGION"),
+  awsAccessKeyId: readAws("ACCESS_KEY_ID"),
+  awsSecretAccessKey: readAws("SECRET_ACCESS_KEY"),
   /** Optional: leave unset to keep sessions in the browser only. */
   sessionBucket: read("SANJIVANI_SESSION_BUCKET"),
   pollyVoice: read("POLLY_VOICE_ID", "Amy"),

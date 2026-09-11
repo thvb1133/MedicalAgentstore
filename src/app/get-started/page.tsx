@@ -43,7 +43,10 @@ const ROUTES = [
 
 const KEYS = [
   ["ANTHROPIC_API_KEY", "Claude — plain-language interpretation and the companion's replies"],
-  ["AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY / AWS_REGION", "Amazon Polly — neural speech"],
+  [
+    "SANJIVANI_AWS_ACCESS_KEY_ID / …_SECRET_ACCESS_KEY / …_REGION",
+    "Amazon Polly — neural speech. Prefixed, because an AWS host fills the plain AWS_ names with its own role's credentials",
+  ],
   ["SANJIVANI_SESSION_BUCKET", "S3 — measurement history across more than one machine"],
 ];
 

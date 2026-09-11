@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { readSetting } from "@/lib/env";
+import { readFirst, readSetting } from "@/lib/env";
 
 /**
  * This exists because of a real afternoon lost to it. An AWS key reached the
@@ -28,5 +28,35 @@ describe("reading a setting", () => {
   it("falls back when the variable is not set at all", () => {
     expect(readSetting({}, "KEY", "fallback")).toBe("fallback");
     expect(readSetting({}, "KEY")).toBe("");
+  });
+});
+
+/**
+ * The aliases matter on a host that is itself AWS. Amplify and Lambda fill
+ * `AWS_ACCESS_KEY_ID` with the execution role's own credentials, so without a
+ * name of our own a deployment signs Polly requests as the platform and fails
+ * against a principal nobody configured.
+ */
+describe("a setting with an alias", () => {
+  const names = ["SANJIVANI_AWS_ACCESS_KEY_ID", "AWS_ACCESS_KEY_ID"];
+
+  it("prefers the name that cannot collide", () => {
+    const env = { SANJIVANI_AWS_ACCESS_KEY_ID: "ours", AWS_ACCESS_KEY_ID: "the platform's" };
+    expect(readFirst(env, names)).toBe("ours");
+  });
+
+  it("uses the plain name everywhere else", () => {
+    expect(readFirst({ AWS_ACCESS_KEY_ID: "ours" }, names)).toBe("ours");
+  });
+
+  it("skips a name that is set to nothing but whitespace", () => {
+    expect(readFirst({ SANJIVANI_AWS_ACCESS_KEY_ID: "  ", AWS_ACCESS_KEY_ID: "ours" }, names)).toBe(
+      "ours",
+    );
+  });
+
+  it("falls back when none of them is set", () => {
+    expect(readFirst({}, names, "none")).toBe("none");
+    expect(readFirst({}, names)).toBe("");
   });
 });

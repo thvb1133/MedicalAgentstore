@@ -463,13 +463,27 @@ The exported site is verified the same way the server build is: `VERIFY_BASE_URL
 
 ---
 
-## Deploying to AWS Amplify
+## Deploying the whole product, with keys
 
-`amplify.yml` is included. In the Amplify console, connect the repository and add the environment variables above under **App settings → Environment variables**. Amplify detects Next.js and provisions the SSR runtime for the API routes automatically.
+Choose this when you want Claude's replies, Polly's voice and the history mirror rather than the free demonstration. It is the same application; the difference is that a server exists to hold the keys.
+
+`amplify.yml` is included. In the Amplify console, connect the repository and add the environment variables under **App settings → Environment variables**. Amplify detects Next.js and provisions the SSR runtime the route handlers need.
+
+| Variable | Value |
+|---|---|
+| `ANTHROPIC_API_KEY` | your Anthropic key |
+| `SANJIVANI_AWS_ACCESS_KEY_ID` | the IAM user's access key |
+| `SANJIVANI_AWS_SECRET_ACCESS_KEY` | its secret |
+| `SANJIVANI_AWS_REGION` | a region Polly serves, e.g. `us-east-1` |
+| `SANJIVANI_SESSION_BUCKET` | optional; omit to keep history in the browser |
+
+**Use the prefixed names on any AWS host.** `AWS_ACCESS_KEY_ID` and its siblings are not ordinary variable names there: Amplify and Lambda populate them with the execution role's own short-lived credentials, so the app would sign Polly requests as the platform rather than as you, and fail against a principal you never configured. The prefixed names cannot collide and take precedence; the plain ones still work anywhere else, including locally. Both are trimmed, so a stray space from a paste is not fatal.
 
 The IAM user needs `AmazonPollyFullAccess` and, if you enable history, `AmazonS3FullAccess`. Anthropic is called directly rather than through Bedrock, which avoids Bedrock's model-region availability constraints.
 
-Amplify is the deployment to choose when you want the **whole** product rather than the demonstration: it runs the Next server, so the route handlers exist and Claude, Polly and the history mirror all work. The Pages deployment above is the same application with those three switched off.
+Any host that runs a Node process does just as well — the requirement is a server, not this particular one. `npm run build && npm start` is the whole of it.
+
+To check a deployment in one request rather than by clicking around: `curl https://your-host/api/services` returns `{"claude":true,"polly":true,…}` when the keys are being read. Every `false` there is a feature the interface will hide, and the reason will be a missing or mistyped variable rather than anything in the code.
 
 ---
 
