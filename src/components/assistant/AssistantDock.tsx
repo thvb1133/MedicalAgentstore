@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 
+import { CompanionSettings } from "@/components/avatar/CompanionSettings";
 import { TalkingPresenter, canPresent } from "@/components/avatar/TalkingPresenter";
 import { useAssistant } from "@/hooks/useAssistant";
 import { usePortrait } from "@/hooks/usePortrait";
@@ -32,8 +33,9 @@ import { personaInstructions } from "@/lib/avatar/profile";
  */
 export function AssistantDock() {
   const [open, setOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [draft, setDraft] = useState("");
-  const { profile, ready } = useCompanionProfile();
+  const { profile, update: updateProfile, ready } = useCompanionProfile();
   const { services, loaded: servicesLoaded } = useServices();
   const portrait = usePortrait();
 
@@ -76,6 +78,9 @@ export function AssistantDock() {
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
+      // The settings dialog closes itself on Escape, and closing the panel
+      // underneath at the same time would take the person two steps back.
+      if (settingsOpen) return;
       if (e.key === "Escape") {
         setOpen(false);
         assistant.stopSpeaking();
@@ -83,7 +88,7 @@ export function AssistantDock() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [open, assistant]);
+  }, [open, settingsOpen, assistant]);
 
   if (!ready) return null;
 
@@ -95,6 +100,17 @@ export function AssistantDock() {
 
   return (
     <>
+      {settingsOpen && (
+        <CompanionSettings
+          profile={profile}
+          onChange={updateProfile}
+          onClose={() => setSettingsOpen(false)}
+          speechAvailable={services.polly || browserVoice}
+          cloudSpeech={services.polly}
+          portrait={portrait}
+        />
+      )}
+
       {!open && (
         <button
           onClick={() => setOpen(true)}
@@ -125,6 +141,21 @@ export function AssistantDock() {
                 {STATUS_LINE[assistant.status]}
               </p>
             </div>
+            {/*
+              The companion is chosen from here as well as from the session
+              page. Somebody looking at a face in the corner of every page and
+              wanting a different one — or their own — should not have to
+              discover that the only way to change it is inside a measurement
+              they have not started.
+            */}
+            <button
+              onClick={() => setSettingsOpen(true)}
+              aria-label="Change avatar"
+              className="rounded-md px-2 py-1 text-[11px] text-[var(--faint)] transition-colors hover:text-[var(--foreground)]"
+            >
+              Change
+            </button>
+
             {assistant.messages.length > 0 && (
               <button
                 onClick={assistant.clear}

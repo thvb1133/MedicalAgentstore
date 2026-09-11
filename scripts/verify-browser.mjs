@@ -1354,6 +1354,32 @@ async function main() {
     record("it says what it is not", parts?.honest === true);
     record("it says it answers in any language", parts?.languages === true);
 
+    /**
+     * The companion can be changed from here.
+     *
+     * It used to be changeable only from inside a measurement session, which
+     * meant the face somebody sees on every page could only be replaced from
+     * one page — and only after starting a reading they may not have wanted.
+     */
+    await page.click('button[aria-label="Change avatar"]');
+    const dockPicker = await page
+      .waitForFunction(
+        () => {
+          const dialog = document.querySelector('[role="dialog"][aria-label="Companion settings"]');
+          return dialog ? /Use my own picture/i.test(dialog.textContent ?? "") : false;
+        },
+        { timeout: 5000 },
+      )
+      .then(() => true)
+      .catch(() => false);
+    record("the companion can be changed from any page", dockPicker);
+    record(
+      "and a photograph can be uploaded from there",
+      (await page.$('[role="dialog"][aria-label="Companion settings"] input[type="file"]')) !== null,
+    );
+    await page.keyboard.press("Escape");
+    await new Promise((r) => setTimeout(r, 300));
+
     // Escape has to close it. A floating panel you can only dismiss by
     // finding its small close button is a trap for keyboard users.
     await page.keyboard.press("Escape");
@@ -1365,6 +1391,117 @@ async function main() {
 
     record(
       "the assistant ran without console errors",
+      consoleErrors.length === 0,
+      consoleErrors.slice(0, 2).join(" | "),
+    );
+
+    /**
+     * What happens with no keys at all.
+     *
+     * This is the state almost everybody meets, because the published copy
+     * has no server to hold a key in. Until recently it meant a companion
+     * that said nothing and a disabled text box, which reads as a broken
+     * site rather than as a smaller one. What has to be true now is that a
+     * question gets an answer, that the answer admits it came from a list,
+     * and that nothing anywhere claims a model is present.
+     */
+    console.log("\nWith no keys behind it");
+    consoleErrors.length = 0;
+
+    /**
+     * Watching the synthesiser rather than listening to it.
+     *
+     * Headless Chrome ships no installed voices, so nothing can be heard here
+     * and a check for audio would fail on a machine where the feature is
+     * perfectly fine. What can be established is the part this project is
+     * responsible for: that the reply reaches `speechSynthesis.speak` with
+     * the right words in it. Whether a voice then exists is the operating
+     * system's business.
+     */
+    await page.evaluateOnNewDocument(() => {
+      const spoken = [];
+      Object.defineProperty(window, "__spoken", { get: () => spoken });
+      const original = window.speechSynthesis.speak.bind(window.speechSynthesis);
+      window.speechSynthesis.speak = (utterance) => {
+        spoken.push(utterance.text);
+        // Nothing will ever fire "end" without a voice installed, and the
+        // turn loop waits for it, so end the utterance immediately.
+        setTimeout(() => utterance.onend?.(new Event("end")), 10);
+        try {
+          original(utterance);
+        } catch {
+          // No voices; the call itself is what was being checked.
+        }
+      };
+    });
+
+    await page.goto(`${BASE}/`, { waitUntil: "networkidle0" });
+    await page.click('button[aria-label^="Ask "]');
+    await page.waitForSelector('input[aria-label="Your question"]', { timeout: 5000 });
+
+    const warned = await page.evaluate(() => {
+      const el = document.querySelector('div[role="dialog"][aria-label^="Ask "]');
+      return /no language model/i.test(el?.textContent ?? "");
+    });
+    record("it says up front that there is no model behind it", warned);
+
+    await page.type('input[aria-label="Your question"]', "what is hrv");
+    await page.keyboard.press("Enter");
+
+    const answered = await page
+      .waitForFunction(
+        () => {
+          const el = document.querySelector('div[role="dialog"][aria-label^="Ask "]');
+          return /variation in the gaps between beats/i.test(el?.textContent ?? "");
+        },
+        { timeout: 10000 },
+      )
+      .then(() => true)
+      .catch(() => false);
+    record("a question asked with no key still gets an answer", answered);
+
+    const labelled = await page.evaluate(() => {
+      const el = document.querySelector('div[role="dialog"][aria-label^="Ask "]');
+      return /scripted guide/i.test(el?.textContent ?? "");
+    });
+    record("the answer says it came from a written list", labelled);
+
+    const said = await page
+      .waitForFunction(() => window.__spoken.length > 0, { timeout: 8000 })
+      .then(() => page.evaluate(() => window.__spoken[0]))
+      .catch(() => null);
+    record(
+      "the reply is handed to the browser's own voice",
+      typeof said === "string" && /variation in the gaps between beats/i.test(said),
+      said ? `${said.slice(0, 40)}…` : "nothing was spoken",
+    );
+    record(
+      "the spoken version says it is scripted too",
+      typeof said === "string" && /scripted guide/i.test(said),
+    );
+
+    await page.keyboard.press("Escape");
+
+    // The companion page is where the disabled input used to be, and where
+    // the banner used to say the conversation was simply unavailable.
+    await page.goto(`${BASE}/agents/companion`, { waitUntil: "networkidle0" });
+    const companion = await page.evaluate(() => {
+      const input = document.querySelector('form input[type="text"], form input:not([type])');
+      const body = document.body.textContent ?? "";
+      return {
+        typeable: !!input && !input.disabled,
+        scripted: /scripted guide/i.test(body),
+        measurementsStandUp: /every measurement on the page is real/i.test(body),
+        overclaims: /talking back needs claude/i.test(body),
+      };
+    });
+    record("the companion can still be typed to", companion.typeable);
+    record("it says plainly that it is a scripted guide", companion.scripted);
+    record("it says the measurements are unaffected", companion.measurementsStandUp);
+    record("nothing claims the conversation is simply unavailable", !companion.overclaims);
+
+    record(
+      "the keyless path ran without console errors",
       consoleErrors.length === 0,
       consoleErrors.slice(0, 2).join(" | "),
     );
